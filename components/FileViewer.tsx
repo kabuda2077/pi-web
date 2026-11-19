@@ -33,6 +33,7 @@ import { DelimitedTable } from "./DelimitedTable";
 import { isDelimitedTablePath } from "@/lib/delimited-table";
 import { FrontmatterCard } from "./FrontmatterCard";
 import { MentionIcon } from "./SidebarIcons";
+import { RevealFileButton } from "./DesktopFileActions";
 import { diffGapLabel, parseUnifiedPatch, unifiedDiffLines, type SplitDiffCell, type SplitDiffCellType, type SplitDiffGap, type SplitDiffRow, type UnifiedDiffLine } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
@@ -339,6 +340,8 @@ function useWatchRecovery(): [number, (es: EventSource) => () => void] {
 function DownloadLink({ filePath, sourceSessionId }: { filePath: string; sourceSessionId?: string | null }) {
   const { t } = useI18n();
   return (
+    <>
+    <RevealFileButton filePath={filePath} />
     <a
       href={getFileApiUrl(filePath, "download", sourceSessionId)}
       download={getFileName(filePath)}
@@ -352,6 +355,7 @@ function DownloadLink({ filePath, sourceSessionId }: { filePath: string; sourceS
         <line x1="12" y1="15" x2="12" y2="3" />
       </svg>
     </a>
+    </>
   );
 }
 

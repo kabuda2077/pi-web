@@ -10,6 +10,7 @@ import { isAudioPath, isVideoPath } from "@/lib/file-types";
 import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, markdownDocumentRehypePlugins, markdownRehypePlugins, markdownRemarkPlugins, markdownTextLayoutRemarkPlugins, markdownUrlTransform, markdownUserRemarkPlugins, normalizeDisplayMath } from "@/lib/markdown";
 import { parseFenceBlock, splitMarkdownBlocks } from "@/lib/markdown-blocks";
 import { isPlantUmlLang } from "@/lib/plantuml";
+import { showFileLinkMenu } from "./DesktopFileActions";
 import { ImagePreview } from "./ImagePreview";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
 import { PlantUmlBlock } from "./PlantUmlBlock";
@@ -195,7 +196,7 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
 
       return (
         <MarkdownLinkContext.Provider value={true}>
-          <a href={href} {...props} onClick={handleClick}>
+          <a href={href} {...props} onClick={handleClick} onContextMenu={(event) => showFileLinkMenu(event, filePath, () => openFile(filePath, parsePdfPageFragment(href) ?? undefined))}>
             {children}
           </a>
         </MarkdownLinkContext.Provider>
