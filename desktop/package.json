@@ -1,0 +1,22 @@
+{
+  "name": "pi-web-desktop",
+  "productName": "Pi Web Desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop app for the pi coding agent, built on pi-web",
+  "author": "kabuda2077",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.mjs\"",
+    "pack": "node scripts/build.mjs --dir",
+    "dist": "node scripts/build.mjs",
+    "verify": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.3.4",
+    "electron-builder": "26.18.0"
+  }
+}
