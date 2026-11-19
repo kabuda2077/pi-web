@@ -1,0 +1,206 @@
+{
+  "piWeb": "0.17.0",
+  "node": "v26.12.1",
+  "failures": {
+    "app/api/git/diff/route.test.mjs :: allows a Windows junction after its target is explicitly allowed": {
+      "count": 1,
+      "why": "unclear: a Windows-only test; the diff of a file reached through a junction answers unsupported. May be an upstream defect"
+    },
+    "app/api/mcp/route-add.test.mjs :: a fresh folder with a link to nothing under .pi is not offered the step, and the step refuses it": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "app/api/models-config/route.test.mjs :: a dangling models.json symbolic link is refused instead of replaced": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "app/api/models-config/route.test.mjs :: a symlinked models.json keeps its link: Save writes through it to its target": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "app/api/skills/content/route.test.mjs :: app\\api\\skills\\content\\route.test.mjs": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/codemode-settings.test.mjs :: writing Code mode keeps other settings and leaves an unchanged file alone": {
+      "count": 1,
+      "why": "posix: the test checks file permission bits, which Windows does not keep"
+    },
+    "lib/codemode-settings.test.mjs :: writing the inline budget keeps codemode.mode and other settings, and empties nothing it did not fill": {
+      "count": 1,
+      "why": "posix: the test checks file permission bits, which Windows does not keep"
+    },
+    "lib/codemode-settings.test.mjs :: writing the mode keeps codemode.inlineBudget and other settings, and \"on\" removes what only it filled": {
+      "count": 1,
+      "why": "posix: the test checks file permission bits, which Windows does not keep"
+    },
+    "lib/directory-browser.test.mjs :: lists directories and directory symlinks without returning files": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/enabled-models-runtime.test.mjs :: a project-level value is reported as shadowing the global one": {
+      "count": 1,
+      "why": "machine: the temp folder is below the home folder here, so the path is shown with ~"
+    },
+    "lib/extension-ui-theme.test.mjs :: lib\\extension-ui-theme.test.mjs": {
+      "count": 1,
+      "why": "posix: the test imports a module by its absolute path, which on Windows is no URL (D:\\...)"
+    },
+    "lib/http-dispatcher.test.mjs :: resolves PI_CODING_AGENT_DIR as pi's getAgentDir() does": {
+      "count": 1,
+      "why": "posix: the test's values include file:///tmp/agent, no absolute file URL on Windows"
+    },
+    "lib/mcp-config-read.test.mjs :: a project file is read only where its real path is allowed": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/mcp-config-read.test.mjs :: one entry is read for a route the way the listing reads it, link rule included": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/mcp-config-read.test.mjs :: the global file follows a link wherever it leads; a dangling one reads as no file": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/project-command-env.test.mjs :: direct bash updates the platform PATH key": {
+      "count": 1,
+      "why": "posix: the test expects the host's PATH separator (;) for its linux case"
+    },
+    "lib/project-trust.test.mjs :: a folder opened through a link is trusted exactly, as trust.json keys it by its real path": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/project-trust.test.mjs :: a folder that changed under the step is refused unwritten and untrusted": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/project-trust.test.mjs :: a fresh folder that holds a project with no decision is never trusted by the step": {
+      "count": 1,
+      "why": "machine: this user has ~/.agents/skills, which the test's folder below the temp folder inherits"
+    },
+    "lib/project-trust.test.mjs :: the fresh check also counts links to nothing, which existsSync skips": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/project-trust.test.mjs :: the scan below a fresh folder finds each kind of project, deep enough and no further": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/project-trust.test.mjs :: trusting reports the decision it wrote, so a failed read afterwards cannot fail it": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/regular-file.test.mjs :: a regular file is read whole, a missing one is undefined, and anything else throws without blocking": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/rotate-preview-secrets.test.mjs :: reports unwritable and leaves the manifest untouched on a read-only dir": {
+      "count": 1,
+      "why": "posix: the test makes a folder read-only with chmod, which Windows ignores"
+    },
+    "lib/rpc-manager-extension-ui.test.mjs :: Stop unwinds a command waiting on confirm and closes its UI": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-extension-ui.test.mjs :: Stop unwinds a command waiting on custom and closes its UI": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-extension-ui.test.mjs :: Stop unwinds a command waiting on editor and closes its UI": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-extension-ui.test.mjs :: Stop unwinds a command waiting on input and closes its UI": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-extension-ui.test.mjs :: Stop unwinds a command waiting on select and closes its UI": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: a failing event listener cannot reject prompt completion": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: a run an extension command starts is announced once, when it settles": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: a run an extension command waits for is announced once, after the command": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: a run that leaves subagents at work announces only the run after their last report (#1434)": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: a steer joins a run beside a ! command; a prompt that would start a run still waits for it": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: a stopped run an extension command waits for stays stopped after the command": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: a stopped run announces nothing, and its prompt_done says it was stopped": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: accepted prompt failures still finish through the event stream": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: an exact system prompt is reported by get_state without touching the SDK prompt state": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: an extension command that starts no run announces nothing (#1345)": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: completion notification waits for an accepted agent run to become idle": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: prompt admission continues after the preceding preflight rejects": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: prompt admission waits for the preceding preflight and keeps overlapping runs counted": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: prompt commands reject when SDK preflight fails": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: prompt commands wait for SDK preflight acceptance before acknowledging": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/rpc-manager-shutdown.test.mjs :: queued prompt commands forward their streaming behavior and acknowledge acceptance": {
+      "count": 1,
+      "why": "posix: the test uses /tmp as a folder"
+    },
+    "lib/startup-issues.integration.test.mjs :: a broken extension, a conflict and a throwing session_start reach every stream, under the same ids": {
+      "count": 1,
+      "why": "unclear: the broken extension fails with another message here (a parse error naming D:\\); not looked into"
+    },
+    "lib/subagent-input.test.mjs :: rejects files outside cwd, including symlink targets": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "lib/terminal-manager.test.mjs :: native PTY starts after install and repeated creation reuses the same workspace process": {
+      "count": 1,
+      "why": "unclear: the PTY has no pid right after creation here; the app's terminal itself works (npm run verify)"
+    },
+    "lib/terminal-manager.test.mjs :: unclaimed creations expire without requiring a browser cleanup request": {
+      "count": 1,
+      "why": "unclear: the PTY has no pid right after creation here; the app's terminal itself works (npm run verify)"
+    },
+    "lib/worktree.test.mjs :: worktree removal accepts a path that runs through a link": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    }
+  }
+}

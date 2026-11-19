@@ -13,7 +13,8 @@
     "test": "node --test \"test/*.test.mjs\"",
     "pack": "node scripts/build.mjs --dir",
     "dist": "node scripts/build.mjs",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "test:upstream": "node scripts/upstream-tests.mjs"
   },
   "devDependencies": {
     "electron": "45.3.4",

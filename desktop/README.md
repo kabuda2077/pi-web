@@ -100,7 +100,14 @@ to the server it names.
 git fetch upstream --tags
 git rebase --onto v<new> v<old> desktop
 cd desktop && npm run dist && npm run verify
+npm run test:upstream
 ```
+
+`npm run test:upstream` runs pi-web's own tests and reports only the failures that are not
+in `upstream-tests.baseline.json`: the tests that fail on this Windows machine whatever
+this fork changes, each with why. A failure outside it is run once more on its own, since
+some tests depend on timing. After a look at what changed, `npm run test:upstream -- --update`
+rewrites the baseline from the run; entries it adds have an empty `why` to fill in.
 
 The shell reads nothing version-specific from pi-web beyond what its own launcher and
 HTTP API offer, so a new release needs no change here unless one of these changes upstream:
