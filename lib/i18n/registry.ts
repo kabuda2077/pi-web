@@ -2,8 +2,9 @@ import { enLocale } from "./messages/en";
 import { zhCNLocale } from "./messages/zh-CN";
 import { zhTWLocale } from "./messages/zh-TW";
 import type { Locale, LocalePlugin } from "./types";
+import { withDesktopMessages } from "./desktop-messages";
 
-const localePlugins: LocalePlugin[] = [enLocale, zhCNLocale, zhTWLocale];
+const localePlugins: LocalePlugin[] = [enLocale, zhCNLocale, zhTWLocale].map(withDesktopMessages);
 
 /**
  * 根据标识获取已注册的语言包。
