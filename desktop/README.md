@@ -68,6 +68,8 @@ npm run verify          # the changes' unit tests, then the unpacked app's self-
 npm run test:upstream   # pi-web's own tests, against the failures this machine is known to have
 ```
 
+None of them reads or writes `~/.pi/agent`, and none sends a message to a model.
+
 **`npm run verify`** first runs `npm run test:changes`: the unit tests of the changes to pi-web,
 this fork's files named `*.desktop.test.mjs`. It then starts the built app with `--self-test`,
 off screen and on a throwaway profile and agent directory, three times:
@@ -86,6 +88,9 @@ tray icon and the notifications.
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
 in `upstream-tests.baseline.json`: the tests that fail on this Windows machine whatever this
 fork changes, each with why.
+It runs them with a home and a temporary directory of their own, outside the user's profile
+(`scripts/upstream-test-env.mjs`): pi reads a `.agents/skills` folder above a project as a reason
+to ask for trust, and a profile that has one fails some sixty tests that have nothing to do with it.
 A failure outside the baseline is run once more on its own, since some tests depend on timing.
 After a look at what changed, `npm run test:upstream -- --update` rewrites the baseline from the
 run; entries it adds have an empty `why` to fill in.

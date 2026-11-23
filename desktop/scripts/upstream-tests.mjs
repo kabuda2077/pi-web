@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { desktopDir, repoDir } from "./paths.mjs";
+import { withUpstreamTestEnv } from "./upstream-test-env.mjs";
 
 // Runs pi-web's own tests (`npm test` in the repository root) and compares the
 // failures with the ones this machine is known to have
@@ -36,11 +37,11 @@ function testCommand(files) {
 function runTests(files) {
   fs.mkdirSync(path.dirname(resultPath), { recursive: true });
   fs.rmSync(resultPath, { force: true });
-  return new Promise((resolve, reject) => {
-    const child = spawn(testCommand(files), { cwd: repoDir, shell: true, stdio: ["ignore", "inherit", "inherit"] });
+  return withUpstreamTestEnv((env) => new Promise((resolve, reject) => {
+    const child = spawn(testCommand(files), { cwd: repoDir, env, shell: true, stdio: ["ignore", "inherit", "inherit"] });
     child.once("error", reject);
-    child.once("exit", resolve);
-  });
+    child.once("close", resolve);
+  }));
 }
 
 function readResults() {

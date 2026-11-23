@@ -38,10 +38,6 @@
       "count": 1,
       "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
     },
-    "lib/enabled-models-runtime.test.mjs :: a project-level value is reported as shadowing the global one": {
-      "count": 1,
-      "why": "machine: the temp folder is below the home folder here, so the path is shown with ~"
-    },
     "lib/extension-ui-theme.test.mjs :: lib\\extension-ui-theme.test.mjs": {
       "count": 1,
       "why": "posix: the test imports a module by its absolute path, which on Windows is no URL (D:\\...)"
@@ -73,10 +69,6 @@
     "lib/project-trust.test.mjs :: a folder that changed under the step is refused unwritten and untrusted": {
       "count": 1,
       "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
-    },
-    "lib/project-trust.test.mjs :: a fresh folder that holds a project with no decision is never trusted by the step": {
-      "count": 1,
-      "why": "machine: this user has ~/.agents/skills, which the test's folder below the temp folder inherits"
     },
     "lib/project-trust.test.mjs :: the fresh check also counts links to nothing, which existsSync skips": {
       "count": 1,
