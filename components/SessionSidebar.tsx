@@ -715,8 +715,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   const readAt = uiState.readAt;
   const unreadSessionIds = useMemo(() => unreadIdsOf(unreadMarks, readAt), [unreadMarks, readAt]);
   useEffect(() => {
+    // All markers are still unread: do not enqueue another update on this render.
+    if (unreadSessionIds.size === unreadMarks.size) return;
     setUnreadMarks((prev) => withoutReadMarks(prev, readAt));
-  }, [readAt, unreadMarks]);
+  }, [readAt, unreadMarks, unreadSessionIds]);
 
   // What the read triggers below read when they fire: an input, a poll's
   // answer, a selection; never a closure from an older render.
@@ -1155,7 +1157,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
         const next = new Map(prev);
         runningSessionIds.forEach((id) => next.delete(id));
         completedWithNotifications.forEach((id) => next.set(id, markedAt));
-        return next;
+        return sameMarksOr(prev, next);
       });
     }
     // The session on screen finished: read now if someone is looking, else
