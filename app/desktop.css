@@ -1,0 +1,4 @@
+/* The desktop fork's own styles (desktop/README.md, "Changes to pi-web").
+   Loaded after pi-web's stylesheets (app/layout.tsx), so a rule here that names
+   the same element as one of pi-web's wins at equal weight. pi-web's own
+   stylesheets stay as upstream has them. One section per change. */

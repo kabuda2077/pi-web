@@ -13,6 +13,8 @@
     "test": "node --test \"test/*.test.mjs\"",
     "pack": "node scripts/build.mjs --dir",
     "dist": "node scripts/build.mjs",
+    "test:changes": "node --test \"../app/**/*.desktop.test.mjs\" \"../components/**/*.desktop.test.mjs\" \"../hooks/**/*.desktop.test.mjs\" \"../lib/**/*.desktop.test.mjs\"",
+    "preverify": "npm run test:changes",
     "verify": "node scripts/verify.mjs",
     "test:upstream": "node scripts/upstream-tests.mjs"
   },
