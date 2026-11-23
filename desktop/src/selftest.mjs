@@ -588,6 +588,21 @@ async function probeTurnNavigator(shell, win, { ids, prompts }, check) {
 }
 
 /** The `server-fails` scenario: the server cannot start, and the window must say so and offer a way on. */
+/** The models editor's import defaults are kept beside pi's models.json, never in it. */
+async function probeImportDefaults(shell, win, check) {
+  const agentDir = path.join(shell.dir, "agent");
+  const defaults = await win.webContents.executeJavaScript(`(async () => {
+    const url = "/api/models-config/import-defaults";
+    const put = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contextWindows: { "self-test": 64000 } }) });
+    return { put: put.status, get: await fetch(url).then((response) => response.json()) };
+  })()`, true);
+  const modelsJson = path.join(agentDir, "models.json");
+  const storedPath = path.join(agentDir, "pi-web-model-import.json");
+  const stored = fs.existsSync(storedPath) ? JSON.parse(fs.readFileSync(storedPath, "utf8")) : null;
+  check("a provider's import default is stored in the app's own file, not in models.json", defaults.put === 200 && defaults.get.contextWindows?.["self-test"] === 64000 &&
+    stored?.contextWindows["self-test"] === 64000 && !(fs.existsSync(modelsJson) && fs.readFileSync(modelsJson, "utf8").includes("piWebImport")), { defaults, stored });
+}
+
 async function probeFailure(shell, report, check) {
   const failed = await waitFor(() => shell.serverState() === "failed", FAILURE_TIMEOUT_MS);
   check("a server that cannot start is reported as failed", failed);
@@ -691,6 +706,7 @@ async function probe(shell, report) {
       reloaded.setContentSize(1760, 760);
       await probeTurnNavigator(shell, reloaded, turnFixture, check);
       reloaded.setContentSize(1760, 760);
+      await probeImportDefaults(shell, reloaded, check);
       await probeFileActions(shell, reloaded, linkPath, check);
     } finally {
       reloaded.setContentSize(...original);

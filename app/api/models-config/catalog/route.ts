@@ -59,6 +59,25 @@ async function loadCatalog(): Promise<ModelCatalogEntry[]> {
   }
 }
 
+// Import only needs exact recommendations, not a page of search results per model.
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null);
+  if (!Array.isArray(body?.ids) || body.ids.length > 300 || !body.ids.every((id: unknown) => typeof id === "string")
+    || typeof body.provider !== "string" || (body.baseUrl != null && typeof body.baseUrl !== "string")) {
+    return NextResponse.json({ error: "Invalid model import batch" }, { status: 400 });
+  }
+  try {
+    const entries = await loadCatalog();
+    const presets = Array.from(new Set<string>(body.ids)).flatMap((id) => {
+      const match = recommendModelCatalogPreset(entries, id, body.provider, body.baseUrl ?? "");
+      return match.exactMatches ? [{ id, preset: match.preset }] : [];
+    });
+    return NextResponse.json({ presets });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+  }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const query = (searchParams.get("q") ?? "").slice(0, 120);

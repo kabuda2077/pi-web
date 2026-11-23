@@ -36,12 +36,14 @@ The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
 
 - The file panel has a button left of Download that shows the file in Explorer. Right-click on a file link in the chat: Open (in the file panel), Show in Explorer, Copy path.
 - A turn navigator in the chat's left margin takes the place of pi-web's rail on the right: one tick a turn, a card with the turn's prompt and reply on hover, click or drag to go there.
+- Settings › Models: adding the models a provider lists fills in what models.dev knows about each, and a provider can have a default context window for the models added to it.
 
 ## Data
 
 | What | Where |
 | --- | --- |
 | Sessions, models, settings | `~/.pi/agent`, shared with the pi CLI and any other pi-web |
+| A provider's default for imported models (Settings › Models) | `~/.pi/agent/pi-web-model-import.json` |
 | Window state, page storage (theme, drafts), logs | `%APPDATA%\pi-web-desktop` |
 
 Uninstalling removes none of it.
@@ -67,6 +69,7 @@ cd desktop
 npm run dist            # builds pi-web, stages the payload, writes release/PiWebDesktop-Setup-<version>.exe
 npm run pack            # the same without the installer: the unpacked app only
 npm run verify          # the changes' unit tests, then the unpacked app's self-test (after either of the two above)
+npm run test:pages      # the changes' browser checks, on previews it starts itself
 npm run test:upstream   # pi-web's own tests, against the failures this machine is known to have
 ```
 
@@ -82,6 +85,7 @@ off screen and on a throwaway profile and agent directory, three times:
   - the file link's menu and the file panel's button reach the shell with the file's full path
   - the turn navigator
   - the caption buttons
+  - the import defaults' file beside models.json
 - *server-fails*: a server that cannot start is reported, with Retry.
 - *app is killed*: killing the app leaves no server behind, and the next launch clears the run
   record the killed server left.
@@ -113,6 +117,12 @@ minimize, maximize and restore operations and the maximized-state query on the h
 test window are replaced: these checks verify dispatch and the button's state changes,
 not OS animations, window placement or dragging. Close is not replaced: the test checks
 that the real window receives a close event, hides to the tray and is not destroyed.
+
+**`npm run test:pages`** runs the changes' browser checks, each against a preview of the real
+components over a mock API (`e2e/preview-*.mjs`): the flows a self-test cannot drive without a
+model. A preview already serving its port is used as it is.
+
+- `e2e/model-import.mjs` (port 30243): a model import, with a catalog lookup that fails and one that answers late
 
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
 in `upstream-tests.baseline.json`: the tests that fail on this Windows machine whatever this
@@ -159,6 +169,7 @@ such a line without git noticing.
 | Unread markers: no cleanup is dispatched when no marker is read, and a running change that alters none keeps the Map it had | | `components/SessionSidebar.tsx`: three lines | (a fix of pi-web's; gone once upstream has it) |
 | Left turn navigator: smooth click, instant drag, keyboard focus on one tick, current/total on the card; hidden for one turn or a left gutter under 64 px | `components/TurnNavigator.tsx`, `components/TurnNavigator.module.css` | `components/ChatWindow.tsx`: renders it where `ChatMinimap` was (its `useMessageRefs` is still used), and `CHAT_MINIMAP_WIDTH` is 0 | changes transcript scrolling, turn grouping or page counts, the placement of the message column, or the inline padding of the composer and the new-session header (52 px at the right, which `app/desktop.css` sets back to 16) |
 | Caption buttons in the main window | `components/DesktopWindowControls.tsx`, `lib/desktop-host.ts`, `desktop/src/window.mjs`, `preload.cjs`, `main.mjs`, `ui/loading.html` | `components/AppShell.tsx`: `data-desktop-bar` and `data-caption-edge` on the chat's and the file panel's top bars, a class on the toolbar's actions (with the trust warning moved into them), and `<DesktopWindowControls />` | adds a bar that reaches the window's top right corner, or moves the toolbar's buttons out of those two bars |
+| Model import: adding discovered models fills in their catalog details; a default context window for a provider's imported models, with Apply to all | `lib/model-import.ts`, `lib/model-import-defaults.ts`, `app/api/models-config/import-defaults/route.ts` | `components/ModelsConfig.tsx`: the field, `addDiscoveredModels()` and the import status, and the draft's defaults merged in on load and split off on save; `app/api/models-config/catalog/route.ts`: `POST`, a batch lookup | changes discovery fields, `fillEmptyModelFields()` or exact catalog matching, or loads and saves the editor's draft somewhere else |
 
 For file actions and the caption the page reaches the shell through `window.piDesktopHost`
 (`src/preload.cjs`), which a browser does not have: there the buttons are absent and the
@@ -176,6 +187,18 @@ dispatches the cleanup even when no marker is read: each replay starts another c
 page stops with "Maximum update depth exceeded". It happens on some starts, by timing.
 `components/unread-markers.desktop.test.mjs` holds both halves of the fix in place.
 
+### Model import
+
+Add selected stages the discovered rows, then looks up exact models.dev recommendations in
+batches through `POST /api/models-config/catalog`. Import and the row's own "fill in" use the
+same empty-field merge; a failed lookup never removes a discovered model. A provider's default
+context window is an editor preference, not a setting of pi's: it is kept in
+`pi-web-model-import.json` beside models.json, which pi's schema owns. The editor carries it in
+its draft on the provider (`piWebImportContextWindow`), so a rename takes it along; on Save it
+writes models.json without it, then the defaults. Import copies it to each new row's
+`contextWindow`. Changing or clearing it rewrites no existing row; Apply to all sets that
+provider's rows in the draft, and the ordinary Save persists them.
+
 ## Following upstream
 
 ```bash
@@ -183,6 +206,7 @@ git fetch upstream --tags
 git diff --stat v<old> v<new> -- $(git diff --name-only v<old> desktop -- . ':!desktop')   # what the release changed in files this fork touches
 git rebase --onto v<new> v<old> desktop
 cd desktop && npm run dist && npm run verify
+npm run test:pages
 npm run test:upstream
 ```
 
