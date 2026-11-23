@@ -603,6 +603,140 @@ async function probeImportDefaults(shell, win, check) {
     stored?.contextWindows["self-test"] === 64000 && !(fs.existsSync(modelsJson) && fs.readFileSync(modelsJson, "utf8").includes("piWebImport")), { defaults, stored });
 }
 
+// The probes of pi-web's pages that follow start on the file-link session's page.
+const SESSION_ROW = `[data-row-key="session:group:${SESSION_ID}"] .session-tree-main`;
+const OPEN_SETTINGS = `[...document.querySelectorAll("button")].find((button) => ["Settings", "设置", "設定"].includes(button.getAttribute("aria-label"))).click()`;
+
+/** Loads the file-link session's page and waits for the sidebar to list it. Answers the page's `run`, or null. */
+async function openFixtureSession(shell, win, check) {
+  const run = (source) => win.webContents.executeJavaScript(source, true);
+  await win.webContents.loadURL(`${shell.backend.origin}/?session=${SESSION_ID}`);
+  if (await waitFor(() => run(`Boolean(document.querySelector(${JSON.stringify(SESSION_ROW)}))`), PAGE_TIMEOUT_MS)) return run;
+  check("the sidebar lists the session", false, await describeWindow(shell));
+  return null;
+}
+
+async function closeSettings(win, run) {
+  win.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+  win.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  return waitFor(() => run(`!document.querySelector(".settings-general")`), 5000);
+}
+
+/** The tasks page lists the sessions without opening one, and a row of it opens its session. */
+async function probeTasksPage(shell, win, check) {
+  const run = await openFixtureSession(shell, win, check);
+  if (!run) return;
+  await run(`document.querySelector(".sidebar-tasks-entry").click()`);
+  const tasks = await waitFor(() => run(`(() => {
+    const rows = [...document.querySelectorAll("[data-group] li button")];
+    if (!rows.length) return null;
+    const composer = document.querySelector("textarea.chat-input-textarea");
+    return {
+      current: document.querySelector(".sidebar-tasks-entry").getAttribute("aria-current"),
+      groups: [...document.querySelectorAll("[data-group]")].map((el) => el.dataset.group),
+      titles: rows.map((row) => row.textContent),
+      composerShown: Boolean(composer?.checkVisibility()),
+    };
+  })()`), PAGE_TIMEOUT_MS);
+  check("Tasks opens a page of sessions in place of the chat", tasks?.current === "page" && tasks.composerShown === false, tasks ?? await describeWindow(shell));
+  if (!tasks) return;
+  check("a session nothing is running in is listed under Recent", tasks.groups.join() === "recent" && tasks.titles.some((title) => title.includes("Write the report.")), tasks);
+  await run(`[...document.querySelectorAll("[data-group] li button")].find((row) => row.textContent.includes("Write the report.")).click()`);
+  const backInChat = await waitFor(() => run(`new URLSearchParams(location.search).get("session") === ${JSON.stringify(SESSION_ID)} && !document.querySelector("[data-group]") && Boolean(document.querySelector("textarea.chat-input-textarea")?.checkVisibility())`), PAGE_TIMEOUT_MS);
+  check("a row of the tasks page opens its session", backInChat);
+}
+
+/**
+ * The sidebar's General and Projects sections, and a General chat: a fresh
+ * composer in the folder the page reserved for it. No session is started and
+ * nothing is sent to a model.
+ */
+async function probeGeneralChats(shell, win, check) {
+  const run = await openFixtureSession(shell, win, check);
+  if (!run) return;
+  const agentDir = path.join(shell.dir, "agent");
+  // A self-test's agent directory holds its General chats too (lib/temp-chats.ts).
+  const chatsRoot = path.join(agentDir, "pi-web-chats");
+  const registryPath = path.join(agentDir, "pi-web-temp-chats.json");
+  const chatFolders = () => (fs.existsSync(chatsRoot) ? fs.readdirSync(chatsRoot).filter((name) => name.startsWith("chat-")) : []);
+
+  const sections = await run(`(() => {
+    const entries = [".sidebar-tasks-entry", '[data-row-key="chats-header"]', '[data-row-key="projects-header"]'].map((selector) => document.querySelector(selector));
+    if (entries.some((el) => !el)) return null;
+    return {
+      tops: entries.map((el) => Math.round(el.getBoundingClientRect().top)),
+      lefts: entries.map((el) => Math.round(el.querySelector("span").getBoundingClientRect().left)),
+      add: Boolean(entries[1].querySelector(".sidebar-section-add")),
+      footer: Boolean(document.querySelector('[data-row-key="footer-open"]')),
+    };
+  })()`);
+  check("the sidebar lists Tasks, General and Projects, in that order", sections && sections.tops[0] < sections.tops[1] && sections.tops[1] < sections.tops[2], sections ?? await describeWindow(shell));
+  if (!sections) return;
+  check("the three entries' labels start on one line", new Set(sections.lefts).size === 1, sections.lefts);
+  check("General has a +, and pi-web's Open another project row is gone", sections.add && !sections.footer, sections);
+
+  // A General chat: a fresh composer in a folder of its own, which the page reserved ahead.
+  await run(`document.querySelector('[data-row-key="chats-header"] .sidebar-section-add').click()`);
+  const draft = await waitFor(() => run(`Boolean(document.querySelector('[data-row-key="chat-draft"]') && document.querySelector(".new-session-hero")?.checkVisibility())`), PAGE_TIMEOUT_MS);
+  check("General + opens a fresh composer with a row of its own", draft, draft ? undefined : await describeWindow(shell));
+  if (!draft) return;
+  const folders = chatFolders();
+  // The folder the main window holds: asked again under its name, the server answers the same one.
+  const { cwd = "" } = await run(`fetch("/api/temp-chats?holder=desktop-main-window", { method: "POST" }).then((response) => response.json())`);
+  check("the main window holds one folder for its chat, the same after its page was given back and the server restarted", folders.length === 1 && folders[0] === path.basename(cwd) && fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory(), { folders, cwd });
+  // The composer asks pi-web's own routes for that folder; a refusal is the "Access denied" in place of the model.
+  const access = await run(`(async () => {
+    const status = (cwd) => fetch("/api/models?cwd=" + encodeURIComponent(cwd)).then((response) => response.status);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return { folder: await status(${JSON.stringify(cwd)}), root: await status(${JSON.stringify(path.dirname(cwd))}), denied: document.body.innerText.includes("Access denied") };
+  })()`);
+  check("pi-web's model list serves the reserved folder, and not the folder above it", access.folder === 200 && access.root === 403, access);
+  check("the composer shows no access error", access.denied === false, access);
+  // Left and opened again, it is the same chat in the same folder.
+  await run(`document.querySelector(${JSON.stringify(SESSION_ROW)}).click()`);
+  await waitFor(() => run(`!document.querySelector('[data-row-key="chat-draft"]')`), PAGE_TIMEOUT_MS);
+  await run(`document.querySelector('[data-row-key="chats-header"] .sidebar-section-add').click()`);
+  const reopened = await waitFor(() => run(`Boolean(document.querySelector('[data-row-key="chat-draft"]'))`), PAGE_TIMEOUT_MS);
+  const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+  check("a chat left unsent keeps its folder: opening it again reserves no other", reopened && chatFolders().join() === folders.join() && registry.cwds.length === folders.length, { folders: chatFolders(), registry });
+
+  await run(OPEN_SETTINGS);
+  const named = await waitFor(() => run(`(() => {
+    const text = document.querySelector("#settings-temp-chat-folder")?.parentElement.querySelector(".settings-chat-option span")?.textContent;
+    // A path, not the row's "Loading…": the folder has been read.
+    return text && /[\\\\/]/.test(text) ? text : null;
+  })()`), PAGE_TIMEOUT_MS);
+  check("General settings name the folder of the General chats", typeof named === "string" && path.basename(named) === path.basename(chatsRoot), named);
+  await closeSettings(win, run);
+}
+
+/** Projects +: its dialog, and a folder made there staying listed as a project with no session and no pin. */
+async function probeNewProject(shell, win, workDir, check) {
+  const run = await openFixtureSession(shell, win, check);
+  if (!run) return;
+  await run(`document.querySelector('[data-row-key="projects-header"] .sidebar-section-add').click()`);
+  const dialog = await waitFor(() => run(`Boolean(document.querySelector("dialog.new-project-dialog[open] #new-project-name"))`), 5000);
+  check("Projects + opens the New project dialog", dialog, dialog ? undefined : await describeWindow(shell));
+  if (dialog) {
+    await run(`document.querySelector("dialog.new-project-dialog footer button").click()`);
+    check("Cancel closes the dialog", await waitFor(() => run(`!document.querySelector("dialog.new-project-dialog")`), 5000));
+  }
+  // What the dialog does with the folder it made: pi-web validates it, the sidebar's state records it.
+  const folder = path.join(workDir, "made with projects plus");
+  fs.mkdirSync(folder, { recursive: true });
+  const made = await run(`(async () => {
+    const post = async (url, body) => {
+      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      return { status: response.status, ...(await response.json()) };
+    };
+    const project = await post("/api/cwd/validate", { cwd: ${JSON.stringify(folder)} });
+    const registered = await post("/api/sessions/ui-state", { action: "register-project", projectKey: project.projectKey, root: project.projectRoot });
+    return { validated: project.status, registered: registered.status, key: project.projectKey };
+  })()`);
+  const listed = made.registered === 200 && await waitFor(() => run(`[...document.querySelectorAll("[data-row-key]")].some((row) => row.dataset.rowKey === ${JSON.stringify(`group:${made.key}`)})`), 20_000);
+  check("a folder made with Projects + is listed as a project before it has a session", listed, made);
+}
+
 async function probeFailure(shell, report, check) {
   const failed = await waitFor(() => shell.serverState() === "failed", FAILURE_TIMEOUT_MS);
   check("a server that cannot start is reported as failed", failed);
@@ -707,6 +841,9 @@ async function probe(shell, report) {
       await probeTurnNavigator(shell, reloaded, turnFixture, check);
       reloaded.setContentSize(1760, 760);
       await probeImportDefaults(shell, reloaded, check);
+      await probeTasksPage(shell, reloaded, check);
+      await probeGeneralChats(shell, reloaded, check);
+      await probeNewProject(shell, reloaded, workDir, check);
       await probeFileActions(shell, reloaded, linkPath, check);
     } finally {
       reloaded.setContentSize(...original);

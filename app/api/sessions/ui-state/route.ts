@@ -59,6 +59,9 @@ export async function POST(req: Request) {
   const { request } = parsed;
   try {
     const state = await updateSessionUiState(request);
+    if (request.action === "register-project" && state.createdProjects?.[request.projectKey] !== request.root) {
+      return refusal(409, "full", "No room for another created project");
+    }
     // A name with no room left was not stored (nothing was written): say so,
     // rather than answer with a state that quietly lacks it.
     if (request.action === "rename-project" && request.name !== null && storedProjectName(state, request.projectKey) !== request.name) {

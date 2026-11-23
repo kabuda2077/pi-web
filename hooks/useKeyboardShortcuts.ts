@@ -16,6 +16,14 @@ export function registerAbortHandler(handler: (() => void) | null): void {
   globalAbortHandler = handler;
 }
 
+// Desktop fork: the tasks page covers the chat without unmounting it, so its
+// abort handler stays registered. While that page shows, Esc stops nothing.
+let globalAbortSuspended = false;
+
+export function suspendGlobalAbort(suspended: boolean): void {
+  globalAbortSuspended = suspended;
+}
+
 /**
  * The global Esc shortcut: stops the running agent, unless the key belongs to
  * something else. Typed into a textarea or input, it is that field's (ChatInput
@@ -26,7 +34,7 @@ export function registerAbortHandler(handler: (() => void) | null): void {
  * agent.
  */
 export function handleGlobalEscape(event: KeyboardEvent): boolean {
-  if (event.key !== "Escape" || event.defaultPrevented || !globalAbortHandler) return false;
+  if (event.key !== "Escape" || event.defaultPrevented || !globalAbortHandler || globalAbortSuspended) return false;
 
   const tag = (event.target as HTMLElement | null)?.tagName;
   // Let textarea/input handle Esc internally (ChatInput menus / stop).

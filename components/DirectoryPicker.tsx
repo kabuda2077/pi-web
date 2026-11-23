@@ -107,6 +107,7 @@ function isWindowsDriveRoot(directory: string): boolean {
 }
 
 interface Props {
+  parentPicker?: boolean;
   onCancel: () => void;
   onSelect: (path: string) => void;
   initialPath?: string;
@@ -114,8 +115,9 @@ interface Props {
   error?: string | null;
 }
 
-export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false, error }: Props) {
+export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false, error, parentPicker = false }: Props) {
   const { t } = useI18n();
+  const title = t(parentPicker ? "newProject.chooseParent" : "directoryPicker.selectDirectory");
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [currentPath, setCurrentPath] = useState("");
   const [parentDirectory, setParentDirectory] = useState<string | null>(null);
@@ -228,7 +230,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
       className="directory-picker-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={t("directoryPicker.selectDirectory")}
+      aria-label={title}
       onPointerDown={(event) => {
         backdropPressRef.current = event.target === event.currentTarget;
       }}
@@ -253,7 +255,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
       <div className="directory-picker-panel" style={{ ...panelSurfaceStyle, position: "relative", width: 520, maxWidth: "calc(100vw - 16px)", height: "min(620px, calc(100dvh - 16px))", maxHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, padding: "12px 18px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ color: "var(--text)", fontWeight: 700, fontSize: 15 }}>{t("directoryPicker.selectDirectory")}</div>
+            <div style={{ color: "var(--text)", fontWeight: 700, fontSize: 15 }}>{title}</div>
           </div>
           <button
             type="button"
@@ -347,7 +349,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
         </div>
 
         <div className="directory-picker-footer" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, flexShrink: 0, padding: "10px 18px", borderTop: "1px solid var(--border)" }}>
-          <button
+          {!parentPicker && <button
             className="directory-picker-action"
             type="button"
             onClick={() => {
@@ -358,7 +360,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
             style={{ ...secondaryActionStyle, marginRight: "auto", opacity: canCreate ? 1 : 0.6, cursor: canCreate ? "pointer" : "default" }}
           >
             {t("directoryPicker.newDirectory")}
-          </button>
+          </button>}
           <button className="directory-picker-action" type="button" onClick={onCancel} disabled={busy} style={{ ...secondaryActionStyle, cursor: busy ? "default" : "pointer" }}>{t("i18n.cancel")}</button>
           <button
             className="directory-picker-action"

@@ -18,6 +18,7 @@ import {
 import type { SessionFamily } from "@/lib/session-family";
 import { splitForkSuffix } from "@/lib/session-fork-name";
 import { MAX_PROJECT_NAME_LENGTH, type ProjectMovePosition } from "@/lib/session-ui-state-shared";
+import { CHATS_MORE_KEY, isSectionContent } from "@/lib/sidebar-sections";
 import {
   PINNED_MORE_KEY,
   getRowOffsets,
@@ -51,6 +52,7 @@ import {
   SpinnerIcon,
   TrashIcon,
 } from "./SidebarIcons";
+import { SidebarSectionRow, type SectionRowHandlers } from "./SidebarSectionRows";
 
 /**
  * The sessions tab's tree: the pinned section, every project as a group of
@@ -99,7 +101,7 @@ export interface SessionTreeReveal {
   takeFocusFrom?: (active: Element) => boolean;
 }
 
-export interface SessionTreeProps {
+export interface SessionTreeProps extends SectionRowHandlers {
   rows: SidebarRow[];
   layout: SidebarLayout;
   /** Shown above the footer rows when there are no session/group rows; null = none. */
@@ -333,7 +335,7 @@ export function SessionTree(props: SessionTreeProps): ReactNode {
   const handleMoreAction = useCallback((rowKey: string, key: string, action: "more" | "less", button: HTMLElement) => {
     const focus = document.activeElement === button;
     const keyboard = focus && button.matches(":focus-visible");
-    const fallbackKey = key === PINNED_MORE_KEY ? "pinned-header" : `group:${key}`;
+    const fallbackKey = key === PINNED_MORE_KEY ? "pinned-header" : key === CHATS_MORE_KEY ? "chats-header" : `group:${key}`;
     pendingMoreRef.current = { rowKey, fallbackKey, focus, scroll: action === "less" || keyboard };
     if (action === "more") handlersRef.current.onShowMore(key);
     else handlersRef.current.onShowLess(key);
@@ -404,7 +406,7 @@ export function SessionTree(props: SessionTreeProps): ReactNode {
     }
   }, [visibleIndices]);
 
-  const hasTreeRows = rows.some((row) => row.kind === "session" || row.kind === "group" || row.kind === "archive-group");
+  const hasTreeRows = rows.some((row) => row.kind === "session" || row.kind === "group" || row.kind === "archive-group" || isSectionContent(row));
   const showEmpty = !loading && !error && emptyLabel !== null && !hasTreeRows;
   // While dragging: the group's block is dimmed in place (groups never fold
   // up under the pointer), a line marks the drop, and a pill with the
@@ -1037,6 +1039,10 @@ const PlainRowView = memo(function PlainRowView({
   const style = rowStyle(top, height);
 
   switch (row.kind) {
+    case "chats-header":
+    case "projects-header":
+    case "chat-draft":
+      return <SidebarSectionRow row={row} style={style} handlers={handlers} />;
     case "pinned-header":
     case "recent-header": {
       // A date section is a section label like the pinned one, in its look.
@@ -1084,8 +1090,9 @@ const PlainRowView = memo(function PlainRowView({
       );
     }
     case "pinned-more":
+    case "chats-more":
     case "group-more": {
-      const moreKey = row.kind === "pinned-more" ? PINNED_MORE_KEY : row.projectKey;
+      const moreKey = row.kind === "pinned-more" ? PINNED_MORE_KEY : row.kind === "chats-more" ? CHATS_MORE_KEY : row.projectKey;
       return (
         <div className="session-tree-row session-tree-more" style={style} data-row-key={row.key}>
           {row.hidden > 0 && (
@@ -1115,7 +1122,7 @@ const PlainRowView = memo(function PlainRowView({
       return (
         <div className="session-tree-row session-tree-group-empty" style={style} data-row-key={row.key}>
           <span className="session-tree-group-empty-label">{t("sidebar.noLiveSessions")}</span>
-          {!row.project.pinned && (
+          {!row.project.pinned && !row.project.registered && (
             <button
               type="button"
               className="session-tree-more-toggle"

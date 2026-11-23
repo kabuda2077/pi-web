@@ -36,6 +36,10 @@ The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
 
 - The file panel has a button left of Download that shows the file in Explorer. Right-click on a file link in the chat: Open (in the file panel), Show in Explorer, Copy path.
 - A turn navigator in the chat's left margin takes the place of pi-web's rail on the right: one tick a turn, a card with the turn's prompt and reply on hover, click or drag to go there.
+- The sidebar has three entries of one kind: Tasks, General and Projects.
+  - **Tasks** is a page of every session that waits for an answer, runs, or changed lately, across projects.
+  - **General** holds chats that belong to no project. Each gets a folder of its own and is an ordinary pi session there, with the tools and permissions of one in a project.
+  - **Projects** holds pi-web's project groups; its + makes a new named folder and opens it.
 - Settings › Models: adding the models a provider lists fills in what models.dev knows about each, and a provider can have a default context window for the models added to it.
 
 ## Data
@@ -44,9 +48,13 @@ The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
 | --- | --- |
 | Sessions, models, settings | `~/.pi/agent`, shared with the pi CLI and any other pi-web |
 | A provider's default for imported models (Settings › Models) | `~/.pi/agent/pi-web-model-import.json` |
+| The General chats' folders | `~/Chats/chat-<id>`, one a chat; another place can be chosen in Settings › General, for the chats started from then on |
+| Which folders are General chats | `~/.pi/agent/pi-web-temp-chats.json` |
+| The projects made with Projects + | `createdProjects` in pi-web's own `~/.pi/agent/pi-web-session-state.json` |
 | Window state, page storage (theme, drafts), logs | `%APPDATA%\pi-web-desktop` |
 
-Uninstalling removes none of it.
+Uninstalling removes none of it. With `PI_CODING_AGENT_DIR` set, the General chats' folders are
+in `pi-web-chats` under that directory, so a test run never touches `~/Chats`.
 
 ## Working on it
 
@@ -73,7 +81,7 @@ npm run test:pages      # the changes' browser checks, on previews it starts its
 npm run test:upstream   # pi-web's own tests, against the failures this machine is known to have
 ```
 
-None of them reads or writes `~/.pi/agent`, and none sends a message to a model.
+None of them reads or writes `~/.pi/agent` or `~/Chats`, and none sends a message to a model.
 
 **`npm run verify`** first runs `npm run test:changes`: the unit tests of the changes to pi-web,
 this fork's files named `*.desktop.test.mjs`. It then starts the built app with `--self-test`,
@@ -86,6 +94,10 @@ off screen and on a throwaway profile and agent directory, three times:
   - the turn navigator
   - the caption buttons
   - the import defaults' file beside models.json
+  - the sidebar's three entries and the tasks page
+  - a General chat's composer in the folder reserved for it: pi-web's model list must serve
+    that folder, or the composer shows "Access denied"
+  - Projects +, and a folder made there staying listed
 - *server-fails*: a server that cannot start is reported, with Retry.
 - *app is killed*: killing the app leaves no server behind, and the next launch clears the run
   record the killed server left.
@@ -123,6 +135,7 @@ components over a mock API (`e2e/preview-*.mjs`): the flows a self-test cannot d
 model. A preview already serving its port is used as it is.
 
 - `e2e/model-import.mjs` (port 30243): a model import, with a catalog lookup that fails and one that answers late
+- `e2e/task-home.mjs` (port 30245): the tasks page, a General chat from its + to its first send, Projects +
 
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
 in `upstream-tests.baseline.json`: the tests that fail on this Windows machine whatever this
@@ -155,9 +168,22 @@ How a change is made, so that it stays that way:
 - **Its styles are in `app/desktop.css`**, loaded after pi-web's stylesheets (`app/layout.tsx`),
   so a rule there wins over pi-web's at equal weight; over a style pi-web sets inline it needs
   `!important`. `app/globals.css`, `settings.css` and `sidebar.css` stay untouched.
+  A component of this fork's that pi-web's tests render (the sidebar and what it opens) uses
+  plain classes there, not a CSS module: those tests load none.
 - **pi-web's tests and `docs/` stay untouched.** What this fork adds has tests of its own, in
   files named `*.desktop.test.mjs`, and what there is to say about it is said here.
+  Without what this fork hands it, a component is pi-web's: `buildSessionTree()` has the
+  sections only when given `chats`, and outside `DesktopSidebarContext` the sidebar has no
+  Tasks entry and pi-web's New button. That is what pi-web's tests render, so they pass as written.
+- **What a component of pi-web's needs from the shell goes down in a context**
+  (`hooks/useDesktopSidebar.ts`), not in new props: its props and its signature are lines
+  pi-web edits too.
+- **No code goes between two functions pi-web's tests cut out by name.** They read
+  `AppShell.tsx` and `SessionSidebar.tsx` as text, from `const handleNewSession` to the next
+  `const hydrateSelectedSession`, and run the piece: a function put in between is run with it.
 - **One commit a change**, with its rows of the table below and its checks.
+  The sidebar's Tasks, General and Projects are one change: they share their look, the
+  sidebar's state and their checks.
 
 `npm run verify` has a check for each change, because upstream can also move the code around
 such a line without git noticing.
@@ -170,6 +196,12 @@ such a line without git noticing.
 | Left turn navigator: smooth click, instant drag, keyboard focus on one tick, current/total on the card; hidden for one turn or a left gutter under 64 px | `components/TurnNavigator.tsx`, `components/TurnNavigator.module.css` | `components/ChatWindow.tsx`: renders it where `ChatMinimap` was (its `useMessageRefs` is still used), and `CHAT_MINIMAP_WIDTH` is 0 | changes transcript scrolling, turn grouping or page counts, the placement of the message column, or the inline padding of the composer and the new-session header (52 px at the right, which `app/desktop.css` sets back to 16) |
 | Caption buttons in the main window | `components/DesktopWindowControls.tsx`, `lib/desktop-host.ts`, `desktop/src/window.mjs`, `preload.cjs`, `main.mjs`, `ui/loading.html` | `components/AppShell.tsx`: `data-desktop-bar` and `data-caption-edge` on the chat's and the file panel's top bars, a class on the toolbar's actions (with the trust warning moved into them), and `<DesktopWindowControls />` | adds a bar that reaches the window's top right corner, or moves the toolbar's buttons out of those two bars |
 | Model import: adding discovered models fills in their catalog details; a default context window for a provider's imported models, with Apply to all | `lib/model-import.ts`, `lib/model-import-defaults.ts`, `app/api/models-config/import-defaults/route.ts` | `components/ModelsConfig.tsx`: the field, `addDiscoveredModels()` and the import status, and the draft's defaults merged in on load and split off on save; `app/api/models-config/catalog/route.ts`: `POST`, a batch lookup | changes discovery fields, `fillEmptyModelFields()` or exact catalog matching, or loads and saves the editor's draft somewhere else |
+| Tasks page | `components/TasksPage.tsx`, `components/TasksPage.module.css`, `lib/task-groups.ts` | `components/AppShell.tsx`: the page over the chat, which stays mounted; `components/SessionSidebar.tsx`: the entry and its count, the two status sets reported to the shell, and no row selected while the page shows; `hooks/useKeyboardShortcuts.ts`: `suspendGlobalAbort()`, so Esc stops no run from the page; `components/SidebarIcons.tsx`: one icon | stops polling `awaitingInputSessionIds` or `subagentsActiveSessionIds`, or keeps the global Esc somewhere else |
+| General chats, in a General section above Projects | `lib/temp-chats.ts`, `lib/temp-chat-path.ts`, `app/api/temp-chats/route.ts`, `hooks/useTempChatDirectories.ts`, `components/TempChatSettings.tsx`, `lib/sidebar-sections.ts`, `components/SidebarSectionRows.tsx` | `components/AppShell.tsx`: `showTempChat()` and `openTempChat()`, and the chat's folder as its composer's `newSessionCwd`; `lib/session-tree.ts`: the sections' rows when given `chats`, and a chat's folder kept out of the project groups; `components/SessionTree.tsx`: the rows' renderer; `components/SessionSidebar.tsx`: the sections' folds and the header button's target; `components/SettingsPanel.tsx`: the folder's row | starts a new session from something else than `newSessionCwd`, gives a folder access some other way than `allowFileRoot()`, or changes how `buildSessionTree()` orders its rows or `getRowOffsets()` sizes them |
+| Projects +: a new named folder, listed as a project from then on | `components/NewProjectDialog.tsx`, `hooks/useNewProjectFolder.ts`, `lib/directory-client.ts` | `lib/session-tree.ts`: `createdProjects` among the groups; `components/SessionSidebar.tsx`: the dialog; `components/DirectoryPicker.tsx`: `parentPicker`; `lib/session-ui-state*.ts`, `app/api/sessions/ui-state/route.ts`: `register-project` | changes what the ui-state file keeps, or what `POST /api/cwd/browse` and `/api/cwd/validate` answer |
+
+The three rows of the sidebar also share `hooks/useDesktopSidebar.ts` and a section of
+`app/desktop.css`.
 
 For file actions and the caption the page reaches the shell through `window.piDesktopHost`
 (`src/preload.cjs`), which a browser does not have: there the buttons are absent and the
@@ -198,6 +230,32 @@ its draft on the provider (`piWebImportContextWindow`), so a rename takes it alo
 writes models.json without it, then the defaults. Import copies it to each new row's
 `contextWindow`. Changing or clearing it rewrites no existing row; Apply to all sets that
 provider's rows in the draft, and the ordinary Save persists them.
+
+### General chats
+
+A General chat is an ordinary pi session whose folder the app chose. Its composer is pi-web's
+fresh composer with that folder as `newSessionCwd`, so everything pi-web does for a new session
+in a folder (models, tools, attachments, the first send) is pi-web's own code, unchanged.
+
+- The folder is reserved ahead (`POST /api/temp-chats`, `hooks/useTempChatDirectories.ts`): a
+  page holds one for the chat it starts next, from when it loads and again once a chat has taken
+  it. So the composer opens with the click. One that waited for the reservation would leave the
+  chat before it on screen for a moment, taking what is typed.
+- A reservation takes a folder that is still empty and that no session has, before it makes a
+  new one. So a chat opened and left unsent keeps its folder for the next chat, and one empty
+  folder waits under `~/Chats`, from the first start on. A folder with a file in it is never
+  handed out again.
+- A folder is held under its holder's name, in the server's memory, and two holders never share
+  one. The app's main window is one holder whatever page it shows, and a browser tab is one
+  across its reloads, so asking again answers the same folder: the shell ends a hidden page
+  without the page hearing of it, and no folder is made for the page that follows. A tab that
+  closes gives its folder back (`DELETE`); a restart of the server frees every folder no chat
+  used.
+- Reserving grants file access to that one folder (`allowFileRoot()`), as picking a project
+  does. The folder above it and the chats beside it stay closed.
+- A registry written before the default moved from `~/Pi Chats` to `~/Chats` names the old
+  default as its root. It is read as the new default; its chats keep their folders. Whoever
+  chose `~/Pi Chats` on purpose picks it once more in Settings › General.
 
 ## Following upstream
 

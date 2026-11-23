@@ -24,6 +24,8 @@
 import { getSessionFamily, listSessionFamilies, type SessionFamily } from "./session-family";
 import { storedProjectName, type ProjectMovePosition, type SessionUiFamilyState, type SessionUiState } from "./session-ui-state-shared";
 import type { SessionInfo } from "./types";
+import { CHATS_MORE_KEY, CHATS_SECTION_KEY, chatSection, sectionRowHeight, sidebarSectionKey, type ChatsSection, type SectionRow } from "./sidebar-sections";
+import { isTempChatCwd } from "./temp-chat-path";
 import { workspaceKeyOf } from "./workspace-memory";
 
 export type SidebarLayout = "desktop" | "mobile";
@@ -59,10 +61,10 @@ export const PINNED_MORE_KEY = "pinned";
  * `name` is what the sidebar shows: the user's display name for the project
  * (`customName`, from its group menu's Rename…), else its folder's name.
  */
-export interface SidebarProject { key: string; root: string; name: string; customName: string | null; pinned: boolean; current: boolean }
+export interface SidebarProject { key: string; root: string; name: string; customName: string | null; pinned: boolean; current: boolean; registered?: boolean }
 export interface SidebarFamilyStatus { running: boolean; awaiting: boolean; unread: boolean; selected: boolean; transient: boolean }
 /** Where a session row is: the pinned section, its project's group, the recent list, the archive view. */
-export type SessionRowContext = "pinned" | "group" | "recent" | "archive";
+export type SessionRowContext = "pinned" | "group" | "recent" | "archive" | "chat";
 
 // A folded header's counts follow its rows' right column: a family awaiting
 // input counts as awaiting, not running.
@@ -77,7 +79,9 @@ export type SidebarRow =
   | { kind: "spacer"; key: "top-spacer" | "pinned-spacer" | "footer-spacer" | `group-spacer:${string}` | `recent-spacer:${RecentSection}` }
   | { kind: "footer-open"; key: "footer-open" }
   | { kind: "footer-archived"; key: "footer-archived"; count: number }
-  | { kind: "archive-group"; key: string; project: SidebarProject; count: number; expanded: boolean };
+  | { kind: "archive-group"; key: string; project: SidebarProject; count: number; expanded: boolean }
+  // Desktop fork: the rows of the General and Projects sections (lib/sidebar-sections.ts).
+  | SectionRow;
 
 export interface SessionTreeInput {
   /** The full catalog (allSessions), subagents included. */
@@ -102,6 +106,9 @@ export interface SessionTreeInput {
   listMode?: SidebarListMode;
   /** The recent list's inputs: see RecentListInput. */
   recent?: RecentListInput;
+  /** Desktop fork: with it the tree has the General and Projects sections; without it, pi-web's own rows. */
+  chats?: ChatsSection;
+  projectsCollapsed?: boolean;
 }
 
 /**
@@ -319,9 +326,11 @@ function createProjectResolver(
       if (cached) return cached;
       const pinnedEntry = Object.hasOwn(uiState.projects, key) ? uiState.projects[key] : undefined;
       const current = currentProject !== null && currentProject.key === key;
+      const registered = uiState.createdProjects && Object.hasOwn(uiState.createdProjects, key);
       const root = roots.get(key)
         ?? (current ? currentProject.root : undefined)
         ?? pinnedEntry?.root
+        ?? (registered ? uiState.createdProjects?.[key] : undefined)
         ?? key;
       const customName = storedProjectName(uiState, key) ?? null;
       const project: SidebarProject = {
@@ -330,6 +339,7 @@ function createProjectResolver(
         name: customName ?? projectNameOf(root),
         customName,
         pinned: pinnedEntry !== undefined,
+        ...(registered && { registered: true }),
         current,
       };
       projects.set(key, project);
@@ -482,6 +492,7 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   const pinnedFamilies: SessionFamily[] = [];
   // Live families outside the pinned section, newest first: the recent list's.
   const otherFamilies: SessionFamily[] = [];
+  const chatFamilies: SessionFamily[] = [];
   // Insertion order follows family activity (newest first).
   const projectFamilies = new Map<string, SessionFamily[]>();
   const projectActivity = new Map<string, number>();
@@ -495,6 +506,10 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     }
     resolver.noteFamily(family);
     const key = familyProjectKey(family);
+    if (sidebarSectionKey(family, input.chats) === CHATS_SECTION_KEY) {
+      (isFamilyPinned(family, uiState, runningIds) ? pinnedFamilies : chatFamilies).push(family);
+      continue;
+    }
     const activity = timeOf(family.latestModified);
     projectActivity.set(key, Math.max(projectActivity.get(key) ?? -Infinity, activity));
     if (!family.root.transient) savedKeys.add(key);
@@ -509,10 +524,24 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   }
 
   // A spacer keeps the first section's header off the toolbar's line (#1338).
-  const rows: SidebarRow[] = [{ kind: "spacer", key: "top-spacer" }];
+  const rows: SidebarRow[] = [input.chats ? { kind: "spacer", key: "top-spacer", height: 2 } : { kind: "spacer", key: "top-spacer" }];
+
+  if (input.chats) {
+    rows.push({ kind: "chats-header", key: "chats-header", collapsed: input.chats.collapsed });
+    if (!input.chats.collapsed) {
+      if (input.chats.draft) rows.push({ kind: "chat-draft", key: "chat-draft" });
+      const { visible, revealed, nextShown } = visibleFamilies(chatFamilies, GROUP_VISIBLE_LIMIT, shownMoreFor(input.moreShown, CHATS_MORE_KEY), input);
+      for (const family of visible) rows.push(sessionRow(family, "chat", resolver.get(familyProjectKey(family)), input));
+      const more = moreRowState(chatFamilies.length, visible.length, revealed);
+      if (more) rows.push({ kind: "chats-more", key: "chats-more", ...more, nextShown });
+    }
+    const hasChatRows = rows[rows.length - 1].kind !== "chats-header";
+    rows.push({ kind: "spacer", key: "chats-spacer", height: hasChatRows ? 6 : 2 });
+    rows.push({ kind: "projects-header", key: "projects-header", collapsed: !!input.projectsCollapsed });
+  }
 
   // Pinned section: newest pin first; ties keep family activity order.
-  if (pinnedFamilies.length > 0) {
+  if (!input.projectsCollapsed && pinnedFamilies.length > 0) {
     const pinnedAt = (family: SessionFamily) => finiteNumber(familyEntry(uiState, family.root.id)?.pinnedAt) ?? 0;
     const sorted = pinnedFamilies
       .map((family, index) => ({ family, index }))
@@ -523,7 +552,8 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     if (!input.pinnedCollapsed) {
       const { visible, revealed, nextShown } = visibleFamilies(sorted, PINNED_VISIBLE_LIMIT, shownMoreFor(input.moreShown, PINNED_MORE_KEY), input);
       for (const family of visible) {
-        rows.push(sessionRow(family, "pinned", resolver.get(familyProjectKey(family)), input));
+        const project = input.chats && sidebarSectionKey(family, input.chats) === CHATS_SECTION_KEY ? chatSection(input.chats.label) : resolver.get(familyProjectKey(family));
+        rows.push(sessionRow(family, "pinned", project, input));
       }
       const more = moreRowState(sorted.length, visible.length, revealed);
       if (more) rows.push({ kind: "pinned-more", key: "pinned-more", ...more, nextShown });
@@ -539,8 +569,13 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     seen.add(key);
     projectKeys.push(key);
   };
-  if (currentProject) addKey(currentProject.key);
-  for (const key of Object.keys(uiState.projects)) addKey(key);
+  if (currentProject && !isTempChatCwd(currentProject.root, input.chats?.cwds ?? [])) addKey(currentProject.key);
+  for (const [key, root] of Object.entries(uiState.createdProjects ?? {})) {
+    if (!isTempChatCwd(root, input.chats?.cwds ?? [])) { addKey(key); savedKeys.add(key); }
+  }
+  for (const [key, project] of Object.entries(uiState.projects)) {
+    if (!isTempChatCwd(project.root, input.chats?.cwds ?? [])) addKey(key);
+  }
 
   const projects = projectKeys.map((key) => resolver.get(key));
   // A Map: a stored key such as "constructor" must not find a prototype member.
@@ -581,14 +616,16 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     .map((project) => project.key);
 
   if (input.listMode === "recent" && input.recent) {
-    const shown = pushRecentRows(rows, otherFamilies, input, input.recent, (family) => resolver.get(familyProjectKey(family)));
-    if (shown) rows.push({ kind: "spacer", key: "footer-spacer" });
-    rows.push({ kind: "footer-open", key: "footer-open" });
+    if (!input.projectsCollapsed && pushRecentRows(rows, otherFamilies, input, input.recent, (family) => resolver.get(familyProjectKey(family)))) {
+      rows.push({ kind: "spacer", key: "footer-spacer" });
+    }
+    if (!input.chats) rows.push({ kind: "footer-open", key: "footer-open" });
     if (archivedCount > 0) rows.push({ kind: "footer-archived", key: "footer-archived", count: archivedCount });
     return { rows, projects: orderedProjects, archivedCount, unorderedKeysByBand, projectKeysToRecord };
   }
 
   for (const [index, project] of orderedProjects.entries()) {
+    if (input.projectsCollapsed) break;
     // A gap between two groups, open or folded (#1338): headers right on the
     // rows above them read as one list.
     if (index > 0) rows.push({ kind: "spacer", key: `group-spacer:${project.key}` });
@@ -611,8 +648,9 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
 
   // One spacer parts the groups from the footer, as one parts the pinned
   // section from them.
-  if (orderedProjects.length > 0) rows.push({ kind: "spacer", key: "footer-spacer" });
-  rows.push({ kind: "footer-open", key: "footer-open" });
+  if (!input.projectsCollapsed && orderedProjects.length > 0) rows.push({ kind: "spacer", key: "footer-spacer" });
+  // Desktop fork: Projects + takes this row's place.
+  if (!input.chats) rows.push({ kind: "footer-open", key: "footer-open" });
   if (archivedCount > 0) rows.push({ kind: "footer-archived", key: "footer-archived", count: archivedCount });
 
   return { rows, projects: orderedProjects, archivedCount, unorderedKeysByBand, projectKeysToRecord };
@@ -696,7 +734,7 @@ export function nextProjectKeysToRecord(toRecord: readonly string[], sent: Reado
  */
 export function buildArchiveRows(
   input: Pick<SessionTreeInput, "sessions" | "uiState" | "runningIds" | "awaitingIds" | "unreadIds" | "selectedSessionId" | "currentProject">
-    & { collapsed?: ReadonlySet<string> },
+    & Pick<SessionTreeInput, "chats"> & { collapsed?: ReadonlySet<string> },
 ): SidebarRow[] {
   const { uiState, runningIds } = input;
   const flags: FamilyFlagsInput = input;
@@ -707,7 +745,7 @@ export function buildArchiveRows(
     if (!isFamilyArchived(family, uiState, runningIds)) continue;
     resolver.noteFamily(family);
     const archivedAt = finiteNumber(familyEntry(uiState, family.root.id)?.archivedAt) ?? 0;
-    const key = familyProjectKey(family);
+    const key = sidebarSectionKey(family, input.chats);
     const group = groups.get(key);
     if (group) {
       group.families.push({ family, archivedAt });
@@ -722,7 +760,7 @@ export function buildArchiveRows(
     .map(([key, group], index) => ({ key, group, index }))
     .sort((a, b) => compareDesc(a.group.newest, b.group.newest) || a.index - b.index);
   for (const { key, group } of ordered) {
-    const project = resolver.get(key);
+    const project = input.chats && key === CHATS_SECTION_KEY ? chatSection(input.chats.label) : resolver.get(key);
     const expanded = !input.collapsed?.has(key);
     rows.push({ kind: "archive-group", key: `archive:${key}`, project, count: group.families.length, expanded });
     if (!expanded) continue;
@@ -742,7 +780,7 @@ export function buildArchiveRows(
  * now - olderThanMs. Transient families have no file and are never archived.
  */
 export function familiesToArchive(
-  input: Pick<SessionTreeInput, "sessions" | "uiState" | "runningIds" | "unreadIds" | "selectedSessionId">,
+  input: Pick<SessionTreeInput, "sessions" | "uiState" | "runningIds" | "unreadIds" | "selectedSessionId" | "chats">,
   projectKey: string,
   olderThanMs: number,
   now: number,
@@ -750,7 +788,7 @@ export function familiesToArchive(
   const cutoff = now - olderThanMs;
   const ids: string[] = [];
   for (const family of listSessionFamilies(input.sessions)) {
-    if (familyProjectKey(family) !== projectKey) continue;
+    if (sidebarSectionKey(family, input.chats) !== projectKey) continue;
     if (isFamilyArchived(family, input.uiState, input.runningIds)) continue;
     if (isFamilyPinned(family, input.uiState, input.runningIds)) continue;
     const status = familyStatus(family, input);
@@ -769,12 +807,12 @@ export function familiesToArchive(
  * (isFamilyArchived) and always has a file.
  */
 export function archivedFamilyIds(
-  input: Pick<SessionTreeInput, "sessions" | "uiState" | "runningIds">,
+  input: Pick<SessionTreeInput, "sessions" | "uiState" | "runningIds" | "chats">,
   filter: { projectKey?: string; archivedBefore?: number } = {},
 ): string[] {
   const ids: string[] = [];
   for (const family of listSessionFamilies(input.sessions)) {
-    if (filter.projectKey !== undefined && familyProjectKey(family) !== filter.projectKey) continue;
+    if (filter.projectKey !== undefined && sidebarSectionKey(family, input.chats) !== filter.projectKey) continue;
     if (!isFamilyArchived(family, input.uiState, input.runningIds)) continue;
     if (filter.archivedBefore !== undefined) {
       const archivedAt = finiteNumber(familyEntry(input.uiState, family.root.id)?.archivedAt);
@@ -793,13 +831,13 @@ export function archivedFamilyIds(
  * run. Transient families have no file to delete.
  */
 export function familiesToDelete(
-  input: Pick<SessionTreeInput, "sessions" | "runningIds" | "awaitingIds">,
+  input: Pick<SessionTreeInput, "sessions" | "runningIds" | "awaitingIds" | "chats">,
   projectKey: string,
 ): { ids: string[]; running: number } {
   const ids: string[] = [];
   let running = 0;
   for (const family of listSessionFamilies(input.sessions)) {
-    if (familyProjectKey(family) !== projectKey || family.root.transient) continue;
+    if (sidebarSectionKey(family, input.chats) !== projectKey || family.root.transient) continue;
     if (anyMemberIn(family, input.runningIds) || (input.awaitingIds && anyMemberIn(family, input.awaitingIds))) {
       running++;
       continue;
@@ -815,7 +853,7 @@ export function getRowOffsets(rows: readonly SidebarRow[], layout: SidebarLayout
   const offsets = new Array<number>(rows.length + 1);
   offsets[0] = 0;
   for (let index = 0; index < rows.length; index++) {
-    offsets[index + 1] = offsets[index] + heights[rows[index].kind];
+    offsets[index + 1] = offsets[index] + (sectionRowHeight(rows[index], layout) ?? heights[rows[index].kind as SidebarRowKind]);
   }
   return offsets;
 }
@@ -1073,6 +1111,7 @@ export interface SessionRowLocation {
   unfoldGroup: boolean;
   /** The recent list's date section folded over the row, else null. */
   unfoldRecent: RecentSection | null;
+  unfoldChats?: boolean;
 }
 
 /**
@@ -1086,7 +1125,7 @@ export interface SessionRowLocation {
  * no row for it: not in the list (a fresh session not saved yet) or archived.
  */
 export function locateSessionRow(
-  input: Pick<SessionTreeInput, "sessions" | "uiState" | "runningIds" | "groupExpansion" | "pinnedCollapsed" | "listMode" | "recent">,
+  input: Pick<SessionTreeInput, "sessions" | "uiState" | "runningIds" | "groupExpansion" | "pinnedCollapsed" | "listMode" | "recent" | "chats">,
   sessionId: string,
 ): SessionRowLocation | null {
   const family = getSessionFamily(input.sessions, sessionId);
@@ -1094,6 +1133,9 @@ export function locateSessionRow(
   const projectKey = familyProjectKey(family);
   if (isFamilyPinned(family, input.uiState, input.runningIds)) {
     return { rowKey: `session:pinned:${family.root.id}`, projectKey, unfoldPinned: input.pinnedCollapsed, unfoldGroup: false, unfoldRecent: null };
+  }
+  if (input.chats && isTempChatCwd(family.root.cwd, input.chats.cwds)) {
+    return { rowKey: `session:chat:${family.root.id}`, projectKey, unfoldPinned: false, unfoldGroup: false, unfoldRecent: null, unfoldChats: input.chats.collapsed };
   }
   const recent = input.listMode === "recent" ? input.recent : undefined;
   if (recent) {

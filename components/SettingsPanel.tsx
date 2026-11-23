@@ -42,6 +42,7 @@ import { FontSettings } from "./FontSettings";
 import { HttpProxyForm } from "./HttpProxyForm";
 import { readJsonOrThrow } from "@/lib/fetch-json";
 import { errorMessage } from "@/lib/errors";
+import { TempChatSettings } from "./TempChatSettings";
 
 interface Props {
   cwd: string | null;
@@ -489,6 +490,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.sidebar")}</h3>
+        <TempChatSettings />
         <div className="settings-chat-options">
           <div
             className="settings-chat-option settings-chat-switch-option"
