@@ -4,6 +4,7 @@ import { LLAMA_CPP_PROVIDER_ID } from "@/lib/provider-listing";
 import { useState, useEffect, useCallback, useId, useRef, type ButtonHTMLAttributes, type DragEvent } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { ModelCatalogPreset, ModelCatalogRecommendation } from "@/lib/model-catalog";
+import { importContextWindows, importPresets, parseImportContextWindow, saveImportDefaults, withImportDefaults, withoutImportDefaults } from "@/lib/model-import";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import { ContextWindowError, normalizeContextWindowOverrides, withContextWindowOverride } from "@/lib/model-context";
 import { checkProviderEntries, ProviderEntryError, type ProviderEntryProblem } from "@/lib/model-provider-check";
@@ -125,7 +126,10 @@ interface ModelEntry {
   compat?: Record<string, unknown>;
 }
 
+type ImportStatus = { provider: string; phase: "loading" } | { provider: string; phase: "done"; total: number; matched: number; failed: number };
+
 interface ProviderEntry {
+  piWebImportContextWindow?: number | string;
   name?: string;
   baseUrl?: string;
   api?: string;
@@ -345,17 +349,26 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ── Provider detail ───────────────────────────────────────────────────────────
 
-function ProviderDetail({ name, editingName, fallbackLabel, provider, onChange, onEditingNameChange, onRename, onDelete, onAddModels, enabledModels }: {
+function ProviderDetail({ name, editingName, fallbackLabel, provider, onChange, onEditingNameChange, onRename, onDelete, onAddModels, importStatus, enabledModels }: {
   name: string; editingName: string; fallbackLabel: string; provider: ProviderEntry;
   onChange: (p: ProviderEntry) => void; onEditingNameChange: (n: string) => void;
   onRename: (n: string) => void; onDelete: () => void;
-  onAddModels: (models: DiscoveredModel[]) => void; enabledModels: EnabledModelsController;
+  onAddModels: (models: DiscoveredModel[]) => void; importStatus: ImportStatus | null; enabledModels: EnabledModelsController;
 }) {
   const { t } = useI18n();
   const [discoveryState, setDiscoveryState] = useState<ModelDiscoveryState>({ phase: "idle" });
   const [discoveryQuery, setDiscoveryQuery] = useState("");
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const discoveryRequestIdRef = useRef(0);
+  const [applyFeedback, setApplyFeedback] = useState(0);
+  useEffect(() => {
+    if (!applyFeedback) return;
+    const timer = window.setTimeout(() => setApplyFeedback(0), 2000);
+    return () => window.clearTimeout(timer);
+  }, [applyFeedback]);
+  const context = parseImportContextWindow(provider.piWebImportContextWindow);
+  const invalidContext = provider.piWebImportContextWindow !== undefined && context === undefined;
+  const modelCount = provider.models?.length ?? 0;
   const selectShownRef = useRef<HTMLInputElement>(null);
   const switchNoteId = useId();
   const set = <K extends keyof ProviderEntry>(k: K, v: ProviderEntry[K]) => onChange({ ...provider, [k]: v });
@@ -478,6 +491,32 @@ function ProviderDetail({ name, editingName, fallbackLabel, provider, onChange, 
         <Select value={provider.api ?? ""} onChange={(v) => set("api", v || undefined)} options={API_OPTIONS} />
       </ConfigField>
 
+      <ConfigField label={t("models.importContext")}>
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <input inputMode="numeric" aria-label={t("models.importContext")} aria-invalid={invalidContext}
+            style={{ ...inputStyle, width: "auto", flex: "1 1 200px", minWidth: 0 }}
+            placeholder={t("models.importContextPlaceholder")} value={provider.piWebImportContextWindow ?? ""}
+            onChange={(e) => {
+              setApplyFeedback(0);
+              const next = { ...provider, piWebImportContextWindow: e.target.value.trim() || undefined };
+              if (!next.piWebImportContextWindow) delete next.piWebImportContextWindow;
+              onChange(next);
+            }} />
+          <ConfigButton size="small" style={{ alignSelf: "stretch", height: "auto", minHeight: 28 }}
+            disabled={!context || invalidContext || !modelCount || importStatus?.phase === "loading"}
+            onClick={() => {
+              set("models", provider.models?.map((m) => m.contextWindow === context ? m : { ...m, contextWindow: context }));
+              setApplyFeedback((n) => n + 1);
+            }}>
+            <span aria-live="polite" style={{ display: "grid" }}>
+              <span style={{ gridArea: "1 / 1", visibility: applyFeedback ? "hidden" : "visible" }}>{t("models.applyImportContext")}</span>
+              <span style={{ gridArea: "1 / 1", visibility: applyFeedback ? "visible" : "hidden" }}>{t("models.importContextApplied")}</span>
+            </span>
+          </ConfigButton>
+        </div>
+        {invalidContext && <small role="alert">{t("models.importContextInvalid")}</small>}
+      </ConfigField>
+
       <ConfigField label="Headers">
         <HeaderListEditor
           headers={provider.headers}
@@ -574,7 +613,7 @@ function ProviderDetail({ name, editingName, fallbackLabel, provider, onChange, 
               </span>
               <button
                 onClick={addSelectedModels}
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 || invalidContext || importStatus?.phase === "loading"}
                 style={{ height: 28, padding: "0 11px", border: "none", borderRadius: 5, background: selectedCount ? "var(--accent)" : "var(--bg-panel)", color: selectedCount ? "var(--accent-contrast)" : "var(--text-dim)", cursor: selectedCount ? "pointer" : "not-allowed", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}
               >
                 {selectedCount
@@ -582,6 +621,13 @@ function ProviderDetail({ name, editingName, fallbackLabel, provider, onChange, 
                   : t("models.discoveryAddSelected")}
               </button>
             </div>
+            {importStatus?.provider === name && importStatus.phase === "done" && (
+              <small role="status" style={{ color: "var(--text-muted)" }}>
+                {t("models.importSummary", { total: importStatus.total, matched: importStatus.matched,
+                  missing: importStatus.total - importStatus.matched - importStatus.failed })}
+                {importStatus.failed > 0 && ` · ${t("models.importQueryFailed", { count: importStatus.failed })}`}
+              </small>
+            )}
           </>
         )}
       </div>
@@ -1991,6 +2037,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: {
   /** Sidebar row keys by model object: a moved row stays mounted, and keeps focus. */
   const modelKeysRef = useRef(new WeakMap<ModelEntry, string>());
   const modelKeySequenceRef = useRef(0);
+  const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   /** The model row being dragged, and the row its drop line is on. */
   const draggedModelRef = useRef<{ providerName: string; index: number } | null>(null);
   const [modelDrop, setModelDrop] = useState<{ providerName: string; index: number; after: boolean } | null>(null);
@@ -2015,6 +2062,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: {
   useEffect(() => {
     fetch("/api/models-config")
       .then((r) => readJsonOrThrow<ModelsJson>(r))
+      .then(withImportDefaults)
       .then((d) => {
         const normalized = d.providers ? d : { ...d, providers: {} };
         setConfig(normalized);
@@ -2130,26 +2178,34 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: {
     });
   }, []);
 
-  const addDiscoveredModels = useCallback((providerName: string, discovered: DiscoveredModel[]) => {
-    setConfig((prev) => {
-      const known = new Set((prev.providers?.[providerName]?.models ?? []).map((model) => model.id));
-      trackAddedModels(
-        savedModelIdsRef.current,
-        providerName,
-        discovered.filter((model) => !known.has(model.id)).length,
-      );
-      const provider = prev.providers?.[providerName] ?? {};
-      const models = [...(provider.models ?? [])];
-      const existingIds = new Set(models.map((model) => model.id));
-      for (const discoveredModel of discovered) {
-        if (existingIds.has(discoveredModel.id)) continue;
-        existingIds.add(discoveredModel.id);
-        // Keeps the capabilities the upstream published (#856).
-        models.push({ ...discoveredModel });
-      }
-      return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models } } };
+  const addDiscoveredModels = async (providerName: string, discovered: DiscoveredModel[]) => {
+    const provider = config.providers?.[providerName];
+    if (!provider || saving || importStatus?.phase === "loading") return;
+    const context = parseImportContextWindow(provider.piWebImportContextWindow);
+    const additions: ModelEntry[] = discovered.map((model) => context ? { ...model, contextWindow: context } : { ...model });
+    // Stage the addition immediately. A late catalog reply only fills the original rows,
+    // never a deleted/recreated model, a different provider, or a row edited in the meantime.
+    const originals = new Set(additions);
+    trackAddedModels(savedModelIdsRef.current, providerName, additions.length);
+    updateProvider(providerName, { ...provider, models: [...(provider.models ?? []), ...additions] });
+    setImportStatus({ phase: "loading", provider: providerName });
+    const { presets, failed } = await importPresets(additions.map((m) => m.id), providerName, provider.baseUrl);
+    if (presets.size) setConfig((prev) => {
+      const current = prev.providers?.[providerName];
+      if (!current?.models) return prev;
+      const models = current.models.map((m) => {
+        const preset = originals.has(m) ? presets.get(m.id) : undefined;
+        if (!preset) return m;
+        const filled = fillEmptyModelFields(m, preset);
+        if (!filled.appliedCount) return m;
+        const key = modelKeysRef.current.get(m);
+        if (key) modelKeysRef.current.set(filled.model, key);
+        return filled.model;
+      });
+      return { ...prev, providers: { ...prev.providers, [providerName]: { ...current, models } } };
     });
-  }, []);
+    setImportStatus({ phase: "done", provider: providerName, total: additions.length, matched: presets.size, failed });
+  };
 
   const updateModel = useCallback((providerName: string, index: number, m: ModelEntry) => {
     setConfig((prev) => {
@@ -2262,17 +2318,20 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: {
       draft = renamed;
     }
     try {
+      importContextWindows(draft);
       draft = normalizeContextWindowOverrides(draft);
       checkProviderEntries(draft);
       checkImageMaxBytes(draft);
       const res = await fetch("/api/models-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(withoutImportDefaults(draft)),
       });
       const d = await res.json() as { success?: boolean; error?: string };
       if (!res.ok || d.error) setSaveError(d.error ?? `HTTP ${res.status}`);
       else {
+        // Desktop fork: the import defaults follow models.json into a file of their own.
+        await saveImportDefaults(draft).catch((e: unknown) => setSaveError(e instanceof Error ? e.message : String(e)));
         setSavedOk(true);
         setTimeout(() => setSavedOk(false), 2000);
         // models.json just changed under the switches: providers may have been
@@ -2351,7 +2410,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: {
           onEditingNameChange={(n) => setProviderNameDraft(n === selection.name ? null : { provider: selection.name, name: n })}
           onRename={(n) => renameProvider(selection.name, n)}
           onDelete={() => deleteProvider(selection.name)}
-          onAddModels={(models) => addDiscoveredModels(selection.name, models)}
+          onAddModels={(models) => void addDiscoveredModels(selection.name, models)}
+          importStatus={importStatus}
           enabledModels={enabledModels}
         />
       );
@@ -2530,12 +2590,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: {
           <span style={{ color: "#f87171" }}>
             {loadError ? t("models.configUnreadable", { error: loadError }) : saveError}
           </span>
-        ) : t("models.applyHelp")}>
+        ) : importStatus?.phase === "loading" ? t("models.catalogFilling") : t("models.applyHelp")}>
           {!embedded && <ConfigButton onClick={onClose}>{t("i18n.cancel")}</ConfigButton>}
           <ConfigButton
             variant="primary"
             onClick={handleSave}
-            disabled={saving || savedOk || loadError !== null}
+            disabled={saving || savedOk || loadError !== null || importStatus?.phase === "loading"}
             className={savedOk ? "is-success" : undefined}
           >
             {savedOk && (
