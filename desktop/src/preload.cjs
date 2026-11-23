@@ -5,8 +5,18 @@
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { contextBridge, ipcRenderer } = require("electron");
+const hasCaption = process.isMainFrame && process.argv.includes("--pi-desktop-main-window");
 
 contextBridge.exposeInMainWorld("piDesktopHost", {
+  ...(hasCaption && { windowControls: {
+    run: (action) => ipcRenderer.send("pi-desktop:window-action", action),
+    getState: () => ipcRenderer.invoke("pi-desktop:window-state"),
+    onState: (callback) => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on("pi-desktop:window-state", listener);
+      return () => ipcRenderer.removeListener("pi-desktop:window-state", listener);
+    },
+  } }),
   /** A button on the shell's own loading page. The main process ignores it from any other page. */
   action: (name) => ipcRenderer.send("pi-desktop:action", String(name)),
   /** The page asks for its window to come forward. */
@@ -20,6 +30,8 @@ contextBridge.exposeInMainWorld("piDesktopHost", {
       hasSelection: request?.hasSelection === true,
     }),
 });
+
+if (hasCaption) window.addEventListener("DOMContentLoaded", () => document.documentElement.setAttribute("data-desktop-caption", ""), { once: true });
 
 if (location.protocol !== "file:") {
   contextBridge.executeInMainWorld({

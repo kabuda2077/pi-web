@@ -28,6 +28,13 @@
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
+  header { position: fixed; inset: 0 0 auto; height: 36px; display: flex; justify-content: flex-end; align-items: stretch; app-region: drag; background: var(--panel); border-bottom: 1px solid var(--border); }
+  header button { app-region: no-drag; display: grid; place-items: center; width: 42px; padding: 0; border: 0; border-radius: 0; color: var(--muted); }
+  header button:first-child { border-left: 1px solid var(--border); }
+  header button:hover { background: #e8e9ea; }
+  .dark header button:hover { background: var(--hover); }
+  header svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+  header button[data-cmd="close"]:hover { background: #c42b1c; color: white; }
   body {
     display: grid;
     place-items: center;
@@ -97,6 +104,11 @@
 </style>
 </head>
 <body data-phase="starting">
+<header>
+  <button data-cmd="minimize"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5.5 14.5h13"/></svg></button>
+  <button data-cmd="toggle-maximize"><svg aria-hidden="true" viewBox="0 0 24 24"><path id="max-icon" d="M5 5h14v14H5z"/></svg></button>
+  <button data-cmd="close"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11m0-11-11 11"/></svg></button>
+</header>
 <main>
   <img id="logo" alt="" hidden>
   <div class="bar"></div>
@@ -115,6 +127,21 @@
 <script>
   const byId = (id) => document.getElementById(id);
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const controls = window.piDesktopHost?.windowControls;
+  const zh = navigator.language.startsWith("zh");
+  const commands = [...document.querySelectorAll("button[data-cmd]")];
+  const renderControls = (state) => {
+    const max = !!state?.maximized;
+    byId("max-icon").setAttribute("d", max ? "M8.5 7.5V6a2 2 0 0 1 2-2H17a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-1.5M6.8 8.5h6.4a2.3 2.3 0 0 1 2.3 2.3v6.4a2.3 2.3 0 0 1-2.3 2.3H6.8a2.3 2.3 0 0 1-2.3-2.3v-6.4a2.3 2.3 0 0 1 2.3-2.3z" : "M7.5 5.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z");
+    const labels = zh ? ["最小化", max ? "还原" : "最大化", "关闭"] : ["Minimize", max ? "Restore" : "Maximize", "Close"];
+    commands.forEach((button, i) => { button.title = labels[i]; button.setAttribute("aria-label", labels[i]); });
+  };
+  renderControls();
+  if (controls) {
+    commands.forEach(button => button.addEventListener("click", () => controls.run(button.dataset.cmd)));
+    controls.onState(renderControls);
+    controls.getState().then(renderControls);
+  }
 
   for (const button of document.querySelectorAll("button[data-action]")) {
     button.addEventListener("click", () => window.piDesktopHost.action(button.dataset.action));

@@ -38,7 +38,8 @@ function windowOptions(context) {
     icon: context.icon,
     // A self-test's window is never shown, and a hidden page stops its
     // animations: the file panel would stay at the width it opens from.
-    webPreferences: { ...WEB_PREFERENCES, ...(context.record ? { backgroundThrottling: false } : {}) },
+    frame: true,
+    webPreferences: { ...WEB_PREFERENCES, additionalArguments: [], ...(context.record ? { backgroundThrottling: false } : {}) },
   };
 }
 
@@ -139,7 +140,10 @@ function applyPolicy(win, context) {
  * @param {WindowContext} context
  */
 export function createAppWindow(bounds, context) {
-  const win = new BrowserWindow({ ...bounds, show: false, ...windowOptions(context) });
+  const options = windowOptions(context);
+  const win = new BrowserWindow({ ...bounds, show: false, ...options, frame: false,
+    webPreferences: { ...options.webPreferences, additionalArguments: ["--pi-desktop-main-window"] },
+  });
   applyPolicy(win, context);
   return win;
 }
