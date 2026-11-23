@@ -29,6 +29,7 @@ The shell:
 - No six-connection limit: many open chats and terminals no longer make other requests wait (pi-web `docs/http2.md`).
 - "Task finished" notifications come from the page itself, as Windows notifications; clicking one brings the window forward.
 - Links that leave the app open in the system browser. Only `http`, `https` and `mailto` links do.
+- The main window has no title bar: minimize, maximize/restore and close are buttons at the right end of pi-web's 36 px toolbar, beside the file-panel toggle. Drag the toolbar's background to move the window; its buttons and file tabs stay clickable. Close sends the window to the tray, as Alt+F4 does.
 - The window's size and place, the last page and the theme's background colour are remembered.
 
 The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
@@ -80,6 +81,7 @@ off screen and on a throwaway profile and agent directory, three times:
   address. Then each change to the pages, in the built app:
   - the file link's menu and the file panel's button reach the shell with the file's full path
   - the turn navigator
+  - the caption buttons
 - *server-fails*: a server that cannot start is reported, with Retry.
 - *app is killed*: killing the app leaves no server behind, and the next launch clears the run
   record the killed server left.
@@ -94,6 +96,23 @@ it measures the target prompt inside the pointer event, before release. Mouse fo
 no full-rail ring; keyboard focus highlights the selected tick. The card must identify
 the same prompt as 27/32 both before and after loading the older page. Arrow keys,
 narrow layouts and the single-turn file-link fixture are also checked.
+
+The caption check uses the temporary file-link session with the right panel closed and open.
+Exactly one `[data-window-controls]` group should be visible. Its buttons have
+`data-window-action="minimize"`, `"toggle-maximize"` and `"close"`, in that order; the
+middle button reflects the window state with `data-maximized="false"` or `"true"`.
+The test checks 42px buttons with edge-to-edge square hover fills (red with a white X on Close), their spacing against the panel toggle and the right
+edge, the row height, and the computed `drag` / `no-drag` regions at the current DPI.
+It also checks the rendered bottom divider all the way to the last pixel, in the same
+picture that shows the panel toggle selected. Open `caption-buttons.png` beside
+`report.json` in the temporary directory printed by verification: it is a real capture
+of the top-right 440 × 44 CSS pixels with the panel open.
+
+Clicks go through the real page, preload and main-process IPC handler. Only the native
+minimize, maximize and restore operations and the maximized-state query on the hidden
+test window are replaced: these checks verify dispatch and the button's state changes,
+not OS animations, window placement or dragging. Close is not replaced: the test checks
+that the real window receives a close event, hides to the tray and is not destroyed.
 
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
 in `upstream-tests.baseline.json`: the tests that fail on this Windows machine whatever this
@@ -139,9 +158,11 @@ such a line without git noticing.
 | Menu of a file link in the chat | the same | `components/MarkdownBody.tsx`: one import, and `onContextMenu` on the `<a>` of a local file link | renders file links somewhere else than the `a()` renderer of `MarkdownBody` |
 | Unread markers: no cleanup is dispatched when no marker is read, and a running change that alters none keeps the Map it had | | `components/SessionSidebar.tsx`: three lines | (a fix of pi-web's; gone once upstream has it) |
 | Left turn navigator: smooth click, instant drag, keyboard focus on one tick, current/total on the card; hidden for one turn or a left gutter under 64 px | `components/TurnNavigator.tsx`, `components/TurnNavigator.module.css` | `components/ChatWindow.tsx`: renders it where `ChatMinimap` was (its `useMessageRefs` is still used), and `CHAT_MINIMAP_WIDTH` is 0 | changes transcript scrolling, turn grouping or page counts, the placement of the message column, or the inline padding of the composer and the new-session header (52 px at the right, which `app/desktop.css` sets back to 16) |
+| Caption buttons in the main window | `components/DesktopWindowControls.tsx`, `lib/desktop-host.ts`, `desktop/src/window.mjs`, `preload.cjs`, `main.mjs`, `ui/loading.html` | `components/AppShell.tsx`: `data-desktop-bar` and `data-caption-edge` on the chat's and the file panel's top bars, a class on the toolbar's actions (with the trust warning moved into them), and `<DesktopWindowControls />` | adds a bar that reaches the window's top right corner, or moves the toolbar's buttons out of those two bars |
 
-For file actions the page reaches the shell through `window.piDesktopHost` (`src/preload.cjs`),
-which a browser does not have: there the button is absent and the browser's own menu stays.
+For file actions and the caption the page reaches the shell through `window.piDesktopHost`
+(`src/preload.cjs`), which a browser does not have: there the buttons are absent and the
+browser's own menu stays.
 The shell acts only on a path with a drive letter. A UNC path (`\\host\share\…`) is refused,
 since chat text comes from a model and looking at such a path signs Windows in to the server
 it names.

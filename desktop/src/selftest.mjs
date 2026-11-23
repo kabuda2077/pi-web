@@ -1,6 +1,7 @@
-import { app } from "electron";
+import { app, nativeImage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { mock } from "node:test";
 import { isAppUrl } from "./links.mjs";
 
 // `--self-test=<dir>` starts the app on a throwaway profile and agent
@@ -47,12 +48,16 @@ function pageReady(shell) {
   }, PAGE_TIMEOUT_MS);
 }
 
-/** Saves what the window shows as <dir>/screenshot.png. A window that has not painted yet is asked again. */
-async function saveScreenshot(win, dir, name = "screenshot.png") {
-  const image = await waitFor(async () => {
-    const captured = await win.webContents.capturePage();
+/** Captures the actual compositor output. A window that has not painted yet is asked again. */
+function capture(win, rect) {
+  return waitFor(async () => {
+    const captured = await win.webContents.capturePage(rect);
     return captured.isEmpty() ? null : captured;
   }, SCREENSHOT_TIMEOUT_MS, 500);
+}
+
+async function saveScreenshot(win, dir, name = "screenshot.png") {
+  const image = await capture(win);
   if (image) fs.writeFileSync(path.join(dir, name), image.toPNG());
   return image?.getSize() ?? null;
 }
@@ -217,6 +222,163 @@ function click(webContents, { x, y }, button) {
   webContents.sendInputEvent({ type: "mouseUp", x, y, button, clickCount: 1 });
 }
 
+// Serialized into the renderer. Measure visible targets, not inactive copies in the other bar.
+function captionState(panelOpen) {
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    return el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) && r.width > 0 && r.height > 0 &&
+      r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight;
+  };
+  const region = (el) => getComputedStyle(el).getPropertyValue("-webkit-app-region");
+  const box = (el) => el.getBoundingClientRect().toJSON();
+  const groups = [...document.querySelectorAll("[data-window-controls]")].filter(visible).map(el => ({
+    box: box(el), buttons: [...el.querySelectorAll("button")].filter(visible).map(b => ({
+      action: b.dataset.windowAction, maximized: b.dataset.maximized, region: region(b), box: box(b),
+    })),
+  }));
+  const bars = (panelOpen ? ["center", "panel"] : ["center"]).map((name) => {
+    const bar = document.querySelector(`[data-desktop-bar="${name}"]`);
+    if (!bar) return { name };
+    const controls = [...bar.querySelectorAll('button, a[href], [role="button"], [role="tab"]')].filter(visible);
+    const toggle = controls.find((el) => el.matches('button[aria-controls="file-panel"][aria-expanded]'));
+    return { name, box: box(bar), region: region(bar), border: getComputedStyle(bar).borderBottomColor,
+      toggle: toggle && box(toggle), toggleFill: toggle && getComputedStyle(toggle).backgroundColor,
+      expanded: toggle?.ariaExpanded, controls: controls.map(region) };
+  });
+  return { width: innerWidth, dpr: devicePixelRatio, groups, bars };
+}
+
+// Inspect the same crop we save. Either the bar or a separate fixed group can paint the divider.
+function captionDivider(png, rect, bar) {
+  const image = nativeImage.createFromBuffer(png); // Read PNG pixels at 1x regardless of monitor DPI.
+  const { width, height } = image.getSize();
+  const bitmap = image.toBitmap(); // BGRA on Windows.
+  const rgb = css => css?.match(/^rgb\((\d+), (\d+), (\d+)\)$/)?.slice(1).map(Number);
+  const pixel = (x, y) => {
+    const i = (y * width + x) * 4;
+    return [bitmap[i + 2], bitmap[i + 1], bitmap[i]];
+  };
+  const matches = (actual, expected) => expected && expected.every((v, i) => Math.abs(actual[i] - v) <= 5);
+  const border = rgb(bar.border);
+  if (!border || !bar.toggle || !bar.box) return { ok: false, reason: "missing border or toggle geometry" };
+  const sx = width / rect.width, sy = height / rect.height;
+  const from = Math.max(0, Math.floor((bar.toggle.left - rect.x) * sx));
+  const bottom = (bar.box.bottom - rect.y) * sy;
+  // The DOM can be open while a hidden window still returns an older toolbar.
+  // Sample inside the selected toggle, clear of its icon and borders, in this same frame.
+  const fill = bar.expanded === "true" ? {
+    expected: rgb(bar.toggleFill), actual: pixel(Math.floor((bar.toggle.left - rect.x + 4) * sx), Math.floor((bar.toggle.top - rect.y + 4) * sy)),
+  } : null;
+  let best;
+  for (let y = Math.max(0, Math.floor(bottom - sy) - 1); y <= Math.min(height - 1, Math.ceil(bottom)); y++) {
+    let missing = 0, firstGap = null;
+    for (let x = from; x < width; x++) {
+      const actual = pixel(x, y);
+      if (matches(actual, border)) continue;
+      missing++;
+      firstGap ??= { x, actual };
+    }
+    if (!best || missing < best.missing) best = { y, missing, firstGap };
+  }
+  return { ok: from < width && best?.missing === 0 && (!fill || !!matches(fill.actual, fill.expected)),
+    width, height, from, to: width - 1, best, fill };
+}
+
+async function checkCaption(win, dir, run, panelOpen, check) {
+  const read = () => run(`(${captionState})(${panelOpen})`);
+  const state = await waitFor(async () => {
+    const s = await read();
+    return s.groups.length && s.bars.at(-1).expanded === String(panelOpen) && s;
+  }, 3000) || await read();
+  const { groups, bars } = state;
+  const bar = bars.at(-1);
+  const group = groups[0];
+  const buttons = group?.buttons ?? [];
+  const near = (a, b) => Math.abs(a - b) <= 1 / state.dpr;
+  const phase = panelOpen ? "panel open" : "panel closed";
+  check(`one visible minimize/maximize/close group (${phase})`, groups.length === 1 &&
+    buttons.map(b => b.action).join() === "minimize,toggle-maximize,close" &&
+    buttons[1].maximized === String(win.isMaximized()), state);
+  check(`compact contiguous buttons reach the right edge (${phase})`, buttons.length === 3 &&
+    buttons.every(({ box }, i) => near(box.width, 42) && box.height >= 24 && box.bottom <= 36 + 1 / state.dpr &&
+      near(box.top, buttons[0].box.top) && near(box.left, i ? buttons[i - 1].box.right : group.box.left)) &&
+    near(buttons.at(-1).box.right, state.width) && near(group.box.right, state.width), group);
+  check(`file panel toggle is next to minimize (${phase})`, bar.expanded === String(panelOpen) && buttons.length &&
+    near(bar.toggle?.right, buttons[0].box.left) && Math.abs((bar.toggle.top + bar.toggle.bottom - buttons[0].box.top - buttons[0].box.bottom) / 2) <= 1, bar);
+  check(`36px toolbar is draggable but its buttons and tabs are not (${phase})`, bars.every(b =>
+    near(b.box?.top, 0) && near(b.box?.height, 36) && b.region === "drag" && b.controls?.length && b.controls.every(r => r === "no-drag")) &&
+    buttons.length === 3 && buttons.every(b => b.region === "no-drag"), bars);
+
+  const width = Math.min(440, state.width);
+  const rect = { x: state.width - width, y: 0, width, height: 44 };
+  win.webContents.invalidate();
+  let png, pixels;
+  const continuous = await waitFor(async () => {
+    const image = await capture(win, rect);
+    if (!image) return false;
+    png = image.toPNG();
+    pixels = captionDivider(png, rect, bar);
+    return pixels.ok;
+  }, 3000);
+  if (png && (panelOpen || !continuous)) fs.writeFileSync(path.join(dir, panelOpen ? "caption-buttons.png" : "caption-closed.png"), png);
+  check(`painted toolbar divider reaches the last pixel (${phase})`, continuous, { rect, border: bar.border, dpr: state.dpr, pixels });
+}
+
+async function checkCaptionActions(win, run, shell, check) {
+  const state = () => run(`(${captionState})(true)`);
+  for (const b of (await state()).groups[0]?.buttons ?? []) {
+    win.webContents.sendInputEvent({ type: "mouseMove", x: Math.round(b.box.left + b.box.width / 2), y: Math.round(b.box.top + b.box.height / 2) });
+    const hover = await waitFor(() => run(`(() => {
+      const button = document.querySelector('[data-window-action="${b.action}"]:hover');
+      if (!button) return null;
+      const css = getComputedStyle(button);
+      return { bg: css.backgroundColor, fg: css.color, radius: css.borderRadius, dark: getComputedStyle(document.documentElement).colorScheme === "dark" };
+    })()`), 2000);
+    check(`full square hover on ${b.action}`, hover?.radius === "0px" && (b.action === "close" ? hover.bg === "rgb(196, 43, 28)" && hover.fg === "rgb(255, 255, 255)" : hover.dark ? hover.bg !== "rgba(0, 0, 0, 0)" : hover.bg === "rgb(232, 233, 234)"), hover);
+  }
+  const press = async (action) => {
+    const box = (await state()).groups[0]?.buttons.find(b => b.action === action)?.box;
+    if (!box) return false;
+    click(win.webContents, { x: Math.floor((box.left + box.right) / 2), y: Math.floor((box.top + box.bottom) / 2) }, "left");
+    return true;
+  };
+  // Native maximize/restore can show a hidden window. Intercept the OS calls
+  // on this test window only, after the real renderer/preload/main IPC path.
+  let maximized = false;
+  const stubs = [];
+  try {
+    stubs.push(mock.method(win, "isMaximized", () => maximized));
+    for (const name of ["minimize", "maximize", "unmaximize"]) {
+      stubs.push(mock.method(win, name, () => {
+        if (name !== "minimize") {
+          maximized = name === "maximize";
+          win.emit(name);
+        }
+      }));
+    }
+    for (const [i, name] of ["minimize", "maximize", "unmaximize"].entries()) {
+      const reached = await press(name === "minimize" ? name : "toggle-maximize") &&
+        await waitFor(() => stubs[i + 1].mock.callCount() === 1, 2000);
+      check(`caption click reaches ${name} via IPC`, reached);
+      if (name !== "minimize") check(`maximize button reflects ${name}`, reached && await waitFor(async () =>
+        (await state()).groups[0]?.buttons[1]?.maximized === String(name === "maximize"), 2000));
+    }
+  } finally { for (const stub of stubs) stub.mock.restore(); }
+
+  // Already invisible: checking isVisible alone would pass even if the IPC did nothing.
+  const hide = mock.method(win, "hide"); // Calls through to the real close-to-tray operation.
+  let closed = false;
+  const onClose = () => { closed = true; };
+  win.on("close", onClose);
+  try {
+    const requested = await press("close") && await waitFor(() => closed && hide.mock.callCount() > 0, 2000);
+    check("caption close reaches the real close-to-tray handler", requested && !win.isDestroyed() && !win.isVisible() && shell.mainWindow() === win);
+  } finally {
+    win.removeListener("close", onClose);
+    hide.mock.restore();
+  }
+}
+
 /**
  * The two things pi-web's page asks the shell for a file (lib/desktop-host.ts):
  * the menu of a file link in the chat, and the file panel's "Show in Explorer"
@@ -236,6 +398,7 @@ async function probeFileActions(shell, win, filePath, check) {
   );
   check("a session's reply shows its file link", link, link ? undefined : await describeWindow(shell));
   if (!link) return;
+  await checkCaption(win, shell.dir, run, false, check);
   check("a single-turn chat has no visible navigator", await run(`!document.querySelector('[data-turn-navigator]')?.checkVisibility()`));
 
   // The user's own message is no file link: the page's usual menu, as before.
@@ -271,12 +434,17 @@ async function probeFileActions(shell, win, filePath, check) {
   // A hidden window paints late: the picture is taken once the panel is in it.
   webContents.invalidate();
   await sleep(1500);
+  // The compositor may suspend panel transitions in a hidden BrowserWindow.
+  // Measure the final layout rather than the first one-pixel frame.
+  await run(`document.querySelector("#file-panel").getAnimations().forEach(a => a.finish())`);
+  await checkCaption(win, shell.dir, run, true, check);
   await saveScreenshot(win, shell.dir, "file-panel.png");
 
   requests.length = 0;
   await run(`document.querySelector("#file-panel a[download]").previousElementSibling.click()`);
   const reveal = await waitFor(() => requests.find((entry) => entry.action === "reveal"), 5000);
   check("the button shows the file in Explorer", samePath(reveal?.select), { asked: reveal, file: filePath });
+  await checkCaptionActions(win, run, shell, check);
 }
 
 // Runs in the renderer. A prompt behind the header or composer is not a successful jump.
@@ -430,7 +598,7 @@ async function probeFailure(shell, report, check) {
         phase: document.body.dataset.phase,
         title: document.getElementById("failed-title").textContent,
         log: document.getElementById("log").textContent,
-        buttons: [...document.querySelectorAll("button")].map((button) => button.offsetParent !== null && button.textContent),
+        buttons: [...document.querySelectorAll(".actions button")].map(b => b.offsetParent !== null && b.textContent && b.dataset.action),
       })`,
       true,
     );
@@ -441,7 +609,7 @@ async function probeFailure(shell, report, check) {
   report.page = page;
   check("the window shows the failure page", page?.title);
   check("the failure page says what went wrong", page?.log.includes("could not be run"), page?.log.slice(0, 300));
-  check("the failure page offers retry, logs and quit", page?.buttons.length === 3 && page.buttons.every(Boolean), page?.buttons);
+  check("the failure page offers retry, logs and quit", page?.buttons.join() === "retry,logs,quit", page?.buttons);
   await saveScreenshot(win, shell.dir);
 
   const attempts = shell.startAttempts();

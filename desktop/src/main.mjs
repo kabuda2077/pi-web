@@ -262,6 +262,17 @@ function listenToPages() {
   // A file of this computer that pi-web's page names: the file panel's
   // "Show in Explorer" button and the menu of a file link in the chat.
   const fromAppPage = (event) => isAppUrl(event.senderFrame?.url ?? "", backend.origin);
+  const ownsCaption = (event) => mainWindow && event.sender === mainWindow.webContents && event.senderFrame === event.sender.mainFrame &&
+    (fromAppPage(event) || event.senderFrame.url.split("?")[0] === loadingPageUrl);
+  ipcMain.handle("pi-desktop:window-state", event => ownsCaption(event) ? captionState(mainWindow) : null);
+  ipcMain.on("pi-desktop:window-action", (event, action) => {
+    if (!ownsCaption(event)) return;
+    if (action === "minimize") mainWindow.minimize();
+    else if (action === "toggle-maximize") {
+      if (mainWindow.isMaximized()) mainWindow.unmaximize();
+      else mainWindow.maximize();
+    } else if (action === "close") mainWindow.close(); // Same close-to-tray path as Alt+F4.
+  });
   const fileActions = { strings: t, log, record: fileRequests };
   ipcMain.handle("pi-desktop:reveal-file", (event, filePath) => fromAppPage(event) && revealFile(filePath, fileActions));
   ipcMain.handle("pi-desktop:file-menu", (event, request) => {
@@ -381,11 +392,18 @@ function reveal(win) {
   win.focus();
 }
 
+function captionState(win) {
+  return { maximized: win.isMaximized(), fullscreen: win.isFullScreen() };
+}
+
 function openMainWindow() {
   const workAreas = screen.getAllDisplays().map((display) => display.workArea);
   const { maximized, ...bounds } = restoreBounds(store.get("window"), workAreas);
   const win = createAppWindow(bounds, windowContext);
   mainWindow = win;
+  for (const event of ["maximize", "unmaximize", "enter-full-screen", "leave-full-screen"]) {
+    win.on(event, () => { if (!win.webContents.isDestroyed()) win.webContents.send("pi-desktop:window-state", captionState(win)); });
+  }
   trackWindowState(win, bounds, (state) => store.set("window", state));
 
   win.once("ready-to-show", () => {

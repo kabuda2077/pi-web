@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar, type SelectSessionOptions, type SessionSidebarControl } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
+import { DesktopWindowControls } from "./DesktopWindowControls";
 import { NewSessionContextBar, type NewSessionContextControl } from "./NewSessionContextBar";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
@@ -1860,7 +1861,8 @@ export function AppShell() {
   const renderChatToolbarActions = (mobile: boolean) => {
     if (!mobile && !showChat) return null;
     return (
-      <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
+      <div className="chat-toolbar-actions" style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
+        {!mobile && renderProjectTrustWarning(false)}
         <button
           type="button"
           onClick={() => {
@@ -2498,7 +2500,7 @@ export function AppShell() {
       <div inert={rightPanelFullWidth} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
-        <div style={{ display: "flex", alignItems: "center", position: "relative", borderBottom: "1px solid var(--border)", height: "calc(var(--top-bar-height) + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}>
+        <div data-desktop-bar="center" data-caption-edge={rightPanelOpen ? undefined : "right"} style={{ display: "flex", alignItems: "center", position: "relative", borderBottom: "1px solid var(--border)", height: "calc(var(--top-bar-height) + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}>
           <button
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
@@ -2604,7 +2606,6 @@ export function AppShell() {
           )}
           {!isMobile && (
             <>
-              {renderProjectTrustWarning(false)}
               {renderChatToolbarActions(false)}
               {renderDebugButton(false)}
               {renderSessionStatsButton(false)}
@@ -3010,7 +3011,7 @@ export function AppShell() {
         } as React.CSSProperties}
       >
         {/* Right panel tab bar */}
-        <div style={{
+        <div data-desktop-bar="panel" data-caption-edge={rightPanelOpen ? "right" : undefined} style={{
           display: "flex",
           alignItems: "center",
           flexShrink: 0,
@@ -3142,6 +3143,7 @@ export function AppShell() {
         </div>
       </div>
     </div>
+    <DesktopWindowControls />
     {settingsSection && (
       <SettingsPanel
         cwd={projectTrustCwd}

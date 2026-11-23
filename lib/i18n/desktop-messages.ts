@@ -10,16 +10,31 @@ const desktopMessages: Record<Locale, Record<string, string>> = {
     // The turn navigator
     "turnNavigator.label": "Conversation turns",
     "turnNavigator.turn": "Turn {number}/{total}",
+    // The main window's caption buttons
+    "window.minimize": "Minimize window",
+    "window.maximize": "Maximize window",
+    "window.restore": "Restore window",
+    "window.close": "Close window",
   },
   "zh-CN": {
     // The turn navigator
     "turnNavigator.label": "对话轮次",
     "turnNavigator.turn": "第 {number}/{total} 轮",
+    // The main window's caption buttons
+    "window.minimize": "最小化窗口",
+    "window.maximize": "最大化窗口",
+    "window.restore": "还原窗口",
+    "window.close": "关闭窗口",
   },
   "zh-TW": {
     // The turn navigator
     "turnNavigator.label": "對話輪次",
     "turnNavigator.turn": "第 {number}/{total} 輪",
+    // The main window's caption buttons
+    "window.minimize": "最小化視窗",
+    "window.maximize": "最大化視窗",
+    "window.restore": "還原視窗",
+    "window.close": "關閉視窗",
   },
 };
 
