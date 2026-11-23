@@ -127,12 +127,22 @@ such a line without git noticing.
 | --- | --- | --- | --- |
 | "Show in Explorer" button in the file panel | `components/DesktopFileActions.tsx`, `lib/desktop-host.ts`, `desktop/src/files.mjs`, `desktop/src/file-actions.mjs` | `components/FileViewer.tsx`: one import, and `DownloadLink()` renders the button before its link | gives a file panel a Download that is not `DownloadLink()` |
 | Menu of a file link in the chat | the same | `components/MarkdownBody.tsx`: one import, and `onContextMenu` on the `<a>` of a local file link | renders file links somewhere else than the `a()` renderer of `MarkdownBody` |
+| Unread markers: no cleanup is dispatched when no marker is read, and a running change that alters none keeps the Map it had | | `components/SessionSidebar.tsx`: three lines | (a fix of pi-web's; gone once upstream has it) |
 
 For file actions the page reaches the shell through `window.piDesktopHost` (`src/preload.cjs`),
 which a browser does not have: there the button is absent and the browser's own menu stays.
 The shell acts only on a path with a drive letter. A UNC path (`\\host\share\…`) is refused,
 since chat text comes from a model and looking at such a path signs Windows in to the server
 it names.
+
+### Unread markers
+
+The sidebar's unread cleanup and its running transitions share one React state queue. While the
+page hydrates, a cleanup of lower priority can be skipped, and React then replays the running
+update after it. pi-web returns a fresh Map from that update even when nothing changed, and
+dispatches the cleanup even when no marker is read: each replay starts another cleanup, and the
+page stops with "Maximum update depth exceeded". It happens on some starts, by timing.
+`components/unread-markers.desktop.test.mjs` holds both halves of the fix in place.
 
 ## Following upstream
 
