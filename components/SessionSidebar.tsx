@@ -7,7 +7,8 @@ import { clearDraft } from "@/lib/draft-store";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { newSessionDeepLink, sessionDeepLink } from "@/lib/session-links";
 import { getProjectActivity, getRecentProjects } from "@/lib/project-groups";
-import { workspaceKeyOf } from "@/lib/workspace-memory";
+import { CHATS_MORE_KEY, sidebarSectionKey } from "@/lib/sidebar-sections";
+import { isTempChatCwd } from "@/lib/temp-chat-path";
 import {
   adjacentProjectMove,
   archivedFamilyIds,
@@ -99,8 +100,10 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
 import { useSessionUiState } from "@/hooks/useSessionUiState";
+import { useDesktopSidebar } from "@/hooks/useDesktopSidebar";
 import { archiveViewState, filesFoldState, useSidebarMotion } from "@/hooks/useSidebarMotion";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { NewProjectDialog } from "./NewProjectDialog";
 import { DismissButton } from "./DismissButton";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { PiWebTitle } from "./PiWebTitle";
@@ -130,6 +133,7 @@ import {
   RestoreIcon,
   SearchIcon,
   TerminalIcon,
+  TasksIcon,
   TrashIcon,
   UploadIcon,
 } from "./SidebarIcons";
@@ -432,6 +436,10 @@ export function sameIdsOr(previous: Set<string>, ids: readonly string[]): Set<st
   return previous;
 }
 
+export function activeTaskCount(running: ReadonlySet<string>, awaiting: ReadonlySet<string>, subagents: ReadonlySet<string>): number {
+  return new Set([...running, ...awaiting, ...subagents]).size;
+}
+
 /** Temporary id for a session that does not exist yet: pi is spawned lazily
  *  when the user sends the first message, so no backend call is needed. */
 function createTempSessionId(): string {
@@ -522,6 +530,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  // Desktop fork: what the shell adds to this sidebar (hooks/useDesktopSidebar.ts).
+  const { taskPageOpen, onOpenTasks, onTaskStatusChange } = useDesktopSidebar();
+  const { tempChatDraft, tempChatCwds, chatDirectoriesReady, onNewTempChat } = useDesktopSidebar();
+  const [chatsCollapsed, setChatsCollapsed] = useState(false);
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const handleNewProject = useCallback(() => setNewProjectOpen(true), []);
+  const showChats = Boolean(onNewTempChat || tempChatCwds.length || tempChatDraft);
+  const chats = useMemo(() => showChats ? {
+    cwds: tempChatCwds, collapsed: chatsCollapsed, draft: Boolean(tempChatDraft && !taskPageOpen), label: t("sidebar.chats"),
+  } : undefined, [showChats, tempChatCwds, chatsCollapsed, tempChatDraft, taskPageOpen, t]);
+  const visibleSelectedId = taskPageOpen || tempChatDraft ? null : selectedSessionId;
+  const projectSessions = useMemo(() => tempChatCwds.length ? allSessions.filter((s) => !isTempChatCwd(s.cwd, tempChatCwds)) : allSessions, [allSessions, tempChatCwds]);
+  const recentProjects = useMemo(() => getRecentProjects(projectSessions), [projectSessions]);
   // Tracked in a ref only: the version is compared against the polled value to
   // decide whether the list needs reloading, and no render reads it.
   const sessionListVersionRef = useRef<number | null>(null);
@@ -1113,6 +1135,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   useEffect(() => {
     onRunningSessionIdsChange?.(runningSessionIds);
   }, [onRunningSessionIdsChange, runningSessionIds]);
+  useEffect(() => {
+    onTaskStatusChange?.(awaitingInputSessionIds, subagentsActiveSessionIds);
+  }, [onTaskStatusChange, awaitingInputSessionIds, subagentsActiveSessionIds]);
+  const taskCount = useMemo(() => activeTaskCount(runningSessionIds, awaitingInputSessionIds, subagentsActiveSessionIds), [runningSessionIds, awaitingInputSessionIds, subagentsActiveSessionIds]);
 
   useEffect(() => {
     onSessionsChange?.(allSessions);
@@ -1257,13 +1283,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   useEffect(() => {
     if (!selectedCwdProp) {
       lastSyncedCwdPropRef.current = null;
+      if (tempChatDraft) setSelectedCwd(null);
       return;
     }
     if (selectedCwdProp !== lastSyncedCwdPropRef.current) {
       lastSyncedCwdPropRef.current = selectedCwdProp;
       setSelectedCwd(selectedCwdProp);
     }
-  }, [selectedCwdProp]);
+  }, [selectedCwdProp, tempChatDraft]);
 
   // Load worktrees for the current effective cwd
   const [wtRefreshKey, setWtRefreshKey] = useState(0);
@@ -1308,9 +1335,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
 
   // Auto-select cwd and restore session from URL on first load
   useEffect(() => {
-    if (allSessions.length === 0 || skipInitialProjectSelection) return;
+    if (allSessions.length === 0 || skipInitialProjectSelection || tempChatDraft || taskPageOpen) return;
 
-    if (selectedCwd === null) {
+    // The shell may already have promoted a standalone draft. Its cwd sync
+    // runs in this same commit; don't overwrite it with the recent project.
+    if (selectedCwd === null && !selectedCwdProp) {
       // If restoring a session, set cwd to match that session
       if (initialSessionId && !restoredRef.current) {
         restoredRef.current = true;
@@ -1324,10 +1353,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
         onInitialRestoreDone?.();
         if (initialSessionLinked) showToast(t("sidebar.sessionNotFound"));
       }
-      const projects = getRecentProjects(allSessions);
-      if (projects.length > 0) setSelectedCwd(projects[0].root);
+      if (recentProjects.length > 0) setSelectedCwd(recentProjects[0].root);
     }
-  }, [allSessions, selectedCwd, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, showToast, t]);
+  }, [allSessions, recentProjects, selectedCwd, selectedCwdProp, initialSessionId, initialSessionLinked, skipInitialProjectSelection, tempChatDraft, taskPageOpen, onSelectSession, onInitialRestoreDone, showToast, t]);
 
   // Prefer an exact UI selection while a refetch is in flight. Once the
   // response catches up, the server-resolved path handles Windows case and
@@ -1515,13 +1543,26 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     createWorktree,
   }), [createWorktree, refreshWorktrees]);
 
-  // Header "+": a new session in the sidebar's current cwd (worktree).
-  const handleNewSession = useCallback(() => {
-    if (!selectedCwd) return;
-    startNewSessionIn({ cwd: selectedCwd });
-  }, [selectedCwd, startNewSessionIn]);
-
-  const recentProjects = useMemo(() => getRecentProjects(allSessions), [allSessions]);
+  const openStandaloneDraft = onNewTempChat && (() => {
+    setChatsCollapsed(false);
+    // The composer opens at once while the page holds the chat's folder, else when one is reserved.
+    const opening = onNewTempChat();
+    if (!opening) {
+      setSelectedCwd(null);
+      return;
+    }
+    void opening.then(() => setSelectedCwd(null), (error: unknown) => showToast(error instanceof Error ? error.message : String(error)));
+  });
+  const pageCwd = selectedCwdProp ?? selectedCwd;
+  const newConversationCwd = taskPageOpen || tempChatDraft || isTempChatCwd(pageCwd, tempChatCwds) ? null : pageCwd;
+  const canStartConversation = newConversationCwd ? chatDirectoriesReady && !!onNewSession : !!openStandaloneDraft;
+  // With General chats the button starts a conversation wherever the page is; pi-web's "New" needs a project.
+  const newLabelKey = onNewTempChat ? "sidebar.newConversation" : "sidebar.new";
+  const handleNewSession = () => {
+    if (!canStartConversation) return;
+    if (newConversationCwd) startNewSessionIn({ cwd: newConversationCwd });
+    else openStandaloneDraft?.();
+  };
 
   const sessionFamilies = useMemo(() => listSessionFamilies(allSessions), [allSessions]);
   const familyByRootId = useMemo(
@@ -1537,11 +1578,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     for (const family of sessionFamilies) {
       if (!isFamilyArchived(family, uiState, runningSessionIds)) continue;
       for (const id of familyIds(family)) ids.add(id);
-      const key = workspaceKeyOf(family.root);
+      const key = sidebarSectionKey(family, chats);
       countByProject.set(key, (countByProject.get(key) ?? 0) + 1);
     }
     return { ids, countByProject };
-  }, [sessionFamilies, uiState, runningSessionIds]);
+  }, [sessionFamilies, uiState, runningSessionIds, chats]);
 
   // Per-project activity counts (running / unread) for the files tab's project menu.
   // Uses the same stable server key as the project list and filtering. An
@@ -1598,31 +1639,34 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     [groupExpansion, keptOpenGroups],
   );
   const model = useMemo(() => buildSessionTree({
+    projectsCollapsed,
+    chats,
     sessions: allSessions,
     uiState,
     runningIds: runningSessionIds,
     awaitingIds: awaitingInputSessionIds,
     unreadIds: unreadSessionIds,
-    selectedSessionId,
-    currentProject,
+    selectedSessionId: visibleSelectedId,
+    currentProject: isTempChatCwd(selectedCwd, tempChatCwds) ? null : currentProject,
     groupExpansion: shownGroupExpansion,
     moreShown,
     pinnedCollapsed,
-  }), [allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, shownGroupExpansion, moreShown, pinnedCollapsed]);
+  }), [allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, visibleSelectedId, currentProject, selectedCwd, tempChatCwds, chats, shownGroupExpansion, moreShown, pinnedCollapsed, projectsCollapsed]);
   // Built while the archive view is rendered, its way out included: it
   // leaves as it was, not empty.
   const archiveMounted = archiveMotion.archiveMounted;
   const archiveCollapsedSet = useMemo(() => new Set(archiveCollapsed), [archiveCollapsed]);
   const archiveRows = useMemo(() => (archiveMounted ? buildArchiveRows({
+    chats,
     sessions: allSessions,
     uiState,
     runningIds: runningSessionIds,
     awaitingIds: awaitingInputSessionIds,
     unreadIds: unreadSessionIds,
-    selectedSessionId,
+    selectedSessionId: visibleSelectedId,
     currentProject,
     collapsed: archiveCollapsedSet,
-  }) : []), [archiveMounted, allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, archiveCollapsedSet]);
+  }) : []), [archiveMounted, chats, allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, visibleSelectedId, currentProject, archiveCollapsedSet]);
   // The archive's projects, top to bottom, folded or not.
   const archiveGroups = useMemo(
     () => archiveRows.flatMap((row) => (row.kind === "archive-group" ? [row] : [])),
@@ -1728,7 +1772,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   // the open archive view), else the selected tab.
   const familyRowButton = useCallback((rootId: string): HTMLElement | null => {
     const panel = sessionsPanelRef.current;
-    for (const context of ["pinned", "group", "archive"]) {
+    for (const context of ["pinned", "chat", "group", "archive"]) {
       const key = CSS.escape(`session:${context}:${rootId}`);
       const button = panel?.querySelector<HTMLElement>(`[data-row-key="${key}"] .session-tree-main`);
       if (button && button.getClientRects().length > 0) return button;
@@ -2104,6 +2148,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   // A fork's focus rule for its copy's row (openForked), used by the reveal of that session only.
   const openRevealFocusRef = useRef<{ sessionId: string; takeFocusFrom: (active: Element) => boolean } | null>(null);
   useEffect(() => {
+    // Desktop fork: here the selected id is the one whose row shows as selected,
+    // none under the tasks page or a General draft. The lines below are pi-web's.
+    const selectedSessionId = visibleSelectedId;
     if (selectedSessionId !== openRevealSessionIdRef.current) {
       openRevealSessionIdRef.current = selectedSessionId;
       openRevealRef.current = selectedSessionId;
@@ -2115,6 +2162,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     const focus = openRevealFocusRef.current;
     openRevealFocusRef.current = null;
     const location = locateSessionRow({
+      chats,
       sessions: allSessions,
       uiState,
       runningIds: runningSessionIds,
@@ -2122,6 +2170,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
       pinnedCollapsed,
     }, sessionId);
     if (!location) return;
+    if (location.unfoldChats) setChatsCollapsed(false);
+    if (location.unfoldChats === undefined) setProjectsCollapsed(false);
     if (location.unfoldPinned) {
       setPinnedCollapsed(false);
       savePinnedCollapsed(false);
@@ -2141,7 +2191,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
       block: "nearest",
       ...(focus?.sessionId === sessionId ? { takeFocusFrom: focus.takeFocusFrom } : {}),
     });
-  }, [selectedSessionId, allSessions, uiState, runningSessionIds, shownGroupExpansion, groupExpansion, pinnedCollapsed, loading, uiStateLoaded, sidebarPrefsRestored, mainTreeShown, saveGroupChoices]);
+  }, [visibleSelectedId, allSessions, uiState, runningSessionIds, shownGroupExpansion, groupExpansion, pinnedCollapsed, chats, loading, uiStateLoaded, sidebarPrefsRestored, mainTreeShown, saveGroupChoices]);
 
   // Fork (the row menu's F): the server copies the family's current branch
   // into a new session beside it (POST /api/sessions/[id]/fork) and leaves
@@ -2295,13 +2345,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   }, [confirmDeleteRootId, loadSessions, openRowMenu, renamingRootId]);
 
   const treeSelectionInput = useMemo(() => ({
+    chats,
     sessions: allSessions,
     uiState,
     runningIds: runningSessionIds,
     awaitingIds: awaitingInputSessionIds,
     unreadIds: unreadSessionIds,
     selectedSessionId,
-  }), [allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId]);
+  }), [chats, allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId]);
 
   const handleGroupMenu = useCallback((project: SidebarProject, opener: HTMLElement) => {
     const olderCount = familiesToArchive(treeSelectionInput, project.key, ARCHIVE_OLDER_THAN_MS, Date.now()).length;
@@ -2499,8 +2550,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   // or running later never shifts it.
   const handleShowMore = useCallback((key: string) => {
     const row = model.rows.find((item) => (item.kind === "group-more" && item.projectKey === key)
+      || (item.kind === "chats-more" && key === CHATS_MORE_KEY)
       || (item.kind === "pinned-more" && key === PINNED_MORE_KEY));
-    if (row?.kind !== "group-more" && row?.kind !== "pinned-more") return;
+    if (row?.kind !== "group-more" && row?.kind !== "pinned-more" && row?.kind !== "chats-more") return;
     setMoreShown((prev) => showMoreFamilies(prev, key, row.nextShown));
   }, [model.rows]);
   const handleShowLess = useCallback((key: string) => {
@@ -2875,6 +2927,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     onShowMore: handleShowMore,
     onShowLess: handleShowLess,
     onTogglePinned: handleTogglePinned,
+    onToggleChats: () => {
+      if (!chatsCollapsed) setMoreShown((prev) => showLessFamilies(prev, CHATS_MORE_KEY));
+      setChatsCollapsed(!chatsCollapsed);
+    },
+    onNewChat: openStandaloneDraft,
     onArchiveFamily: archiveFamily,
     onRestoreFamily: restoreFamily,
     onOpenRowMenu: openRowMenu,
@@ -2900,6 +2957,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     onToggleArchiveGroup: handleToggleArchiveGroup,
     onArchiveGroupMenu: handleArchiveGroupMenu,
     onOpenOtherProject: handleOpenOtherProject,
+    onToggleProjects: () => setProjectsCollapsed((value) => !value),
+    onNewProject: handleNewProject,
     onOpenArchive: () => openArchiveView(),
     // The archive view has no group rows: only the main tree's can be dragged.
     onMoveGroup: moveProject,
@@ -2930,8 +2989,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   // chosen tab's label is bolder, the files tab carries the count). The
   // brand's text reports its own changes (fitHeader).
   const fitHeader = useHeaderFit(headerRef, (stacked
-    ? ["below", t("sidebar.new")]
-    : ["tabs", t("sidebar.tabSessions"), t("sidebar.tabFiles"), t("sidebar.new"), explorerCwd && changesCount > 0 ? changesCount : "", sidebarTab]
+    ? ["below", t(newLabelKey)]
+    : ["tabs", t("sidebar.tabSessions"), t("sidebar.tabFiles"), t(newLabelKey), explorerCwd && changesCount > 0 ? changesCount : "", sidebarTab]
   ).join("\n"));
   const archivedCount = model.archivedCount;
 
@@ -3043,6 +3102,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
       onFocus={(event) => { sidebarFocusRef.current = event.target; }}
       onBlur={(event) => { if (event.relatedTarget === null && !document.hasFocus()) return; if (!event.currentTarget.contains(event.relatedTarget)) sidebarFocusRef.current = null; }}
     >
+      {newProjectOpen && <NewProjectDialog
+        onCancel={() => setNewProjectOpen(false)}
+        onRegister={({ projectKey, projectRoot }) => applyUiStateRequest({ action: "register-project", projectKey, root: projectRoot })}
+        onOpen={(target) => {
+          setNewProjectOpen(false);
+          setProjectsCollapsed(false);
+          startNewSessionIn(target);
+        }}
+      />}
       {customPathOpen && (
         <DirectoryPicker
           initialPath={customPathValue}
@@ -3110,11 +3178,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
           type="button"
           className="sidebar-new-button"
           onClick={handleNewSession}
-          disabled={!selectedCwd}
-          title={selectedCwd ? t("sidebar.newSessionTitle", { path: selectedCwd }) : t("sidebar.selectProject")}
+          disabled={!canStartConversation}
+          title={newConversationCwd ? t("sidebar.newSessionTitle", { path: newConversationCwd }) : t(openStandaloneDraft ? "sidebar.newTempChat" : "sidebar.selectProject")}
         >
           <PlusIcon size={12} />
-          <span className="sidebar-new-label">{t("sidebar.new")}</span>
+          <span className="sidebar-new-label">{t(newLabelKey)}</span>
         </button>
         <button
           ref={searchButtonRef}
@@ -3155,6 +3223,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
         className="sidebar-panel sidebar-sessions-panel"
         onScrollCapture={rememberScroll}
       >
+        {onOpenTasks && (
+          <button type="button" className={`sidebar-tasks-entry sidebar-section-entry${isMobile ? " is-mobile" : ""}`} aria-current={taskPageOpen ? "page" : undefined} onClick={onOpenTasks}>
+            <TasksIcon size={14} />
+            <span>{t("sidebar.tasks")}</span>
+            {taskCount > 0 && <span className="sidebar-task-count">{taskCount}</span>}
+          </button>
+        )}
         {sessionSearchOpen && (
           <div className="sidebar-search">
             <input
@@ -3179,7 +3254,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
         <SessionSearch
           open={sessionSearchOpen}
           query={sessionSearchQuery}
-          selectedSessionId={selectedSessionId}
+          selectedSessionId={visibleSelectedId}
           onSelectSession={handleSelectSessionFromList}
           onSelectSideChat={onSelectSideChat}
           sessions={allSessions}

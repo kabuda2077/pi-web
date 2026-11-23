@@ -1,0 +1,38 @@
+.page {
+  container-type: inline-size;
+  height: 100%; min-width: 0; overflow: auto;
+  background: var(--bg); color: var(--text);
+}
+.content { width: min(100%, 1040px); margin-inline: auto; padding: 24px clamp(16px, 5%, 48px) 40px; box-sizing: border-box; }
+.heading { margin: 0; font-size: 24px; line-height: 32px; font-weight: 650; }
+.scope { margin: 6px 0 24px; color: var(--text-muted); font-size: 14px; line-height: 21px; }
+.group + .group { margin-top: 20px; }
+.groupHeading {
+  display: flex; align-items: baseline; gap: 6px;
+  margin: 0 0 9px;
+  font-size: 13px; line-height: 20px; font-weight: 600; color: var(--text-muted);
+}
+.count, .meta { font-variant-numeric: tabular-nums; }
+.count { font-size: 12px; font-weight: 400; color: var(--text-dim); }
+.list { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.list li { min-width: 0; }
+.row {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) fit-content(25%); align-items: center; gap: 12px;
+  width: 100%; min-height: 64px; padding: 10px 15px; border: 1px solid var(--border); border-radius: 8px;
+  color: inherit; background: transparent; font: inherit; text-align: start; cursor: pointer;
+}
+@media (hover: hover) { .row:hover { background: var(--bg-hover); } }
+.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.indicator { width: 9px; height: 9px; border-radius: 50%; background: var(--text-dim); }
+.group[data-group="waiting"] .indicator { background: #d18a2f; }
+.group[data-group="running"] .indicator { background: #80b78e; }
+.summary { display: grid; min-width: 0; gap: 3px; }
+.title, .project, .meta { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.title { font-size: 14px; line-height: 20px; font-weight: 600; }
+.project, .meta { color: var(--text-muted); font-size: 13px; line-height: 18px; }
+.project { text-align: end; }
+.notice { color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+@container (max-width: 500px) {
+  .content { padding: 20px 14px 32px; }
+  .row { gap: 8px; padding-inline: 11px; }
+}

@@ -13,6 +13,12 @@ import { repoDir } from "./paths.mjs";
 const START_TIMEOUT_MS = 180_000;
 const PREVIEWS = [
   { name: "model-import", port: 30243, fixture: "isolated-model-import-v1", server: "e2e/preview-model-import.mjs", checks: ["e2e/model-import.mjs"] },
+  {
+    name: "task-home", port: 30245, fixture: "isolated-task-home-v1", server: "e2e/preview-task-home.mjs",
+    checks: [
+      "e2e/task-home.mjs",
+    ],
+  },
 ];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

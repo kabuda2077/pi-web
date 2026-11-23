@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar, type SelectSessionOptions, type SessionSidebarControl } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
+import { TasksPage } from "./TasksPage";
+import { useTempChatDirectories } from "@/hooks/useTempChatDirectories";
+import { DesktopSidebarContext, type DesktopSidebar } from "@/hooks/useDesktopSidebar";
 import { DesktopWindowControls } from "./DesktopWindowControls";
 import { NewSessionContextBar, type NewSessionContextControl } from "./NewSessionContextBar";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
@@ -166,6 +169,15 @@ export function AppShell() {
   selectedSessionRef.current = selectedSession;
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [taskPageOpen, setTaskPageOpen] = useState(false);
+  const [tempChatDraft, setTempChatDraft] = useState(false);
+  const { cwds: tempChatCwds, ready: chatDirectoriesReady, held: heldTempChat, prepare: prepareTempChat, started } = useTempChatDirectories(sessionCatalog);
+  // A ref, so that pi-web's callbacks below call it without a line of theirs changing.
+  const tempChatStarted = useRef(started);
+  const [taskStatus, setTaskStatus] = useState(() => ({ awaiting: new Set<string>(), subagents: new Set<string>() }));
+  const handleTaskStatus = useCallback((awaiting: Set<string>, subagents: Set<string>) => {
+    setTaskStatus((prev) => prev.awaiting === awaiting && prev.subagents === subagents ? prev : { awaiting, subagents });
+  }, []);
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
     setSessionCatalog(sessions);
     setCatalogLoaded(true);
@@ -929,6 +941,8 @@ export function AppShell() {
     }
     // Close any session that belongs to a different project — it no longer
     // matches the selected project directory.
+    setTaskPageOpen(false);
+    setTempChatDraft(false);
     const previousDraftKey = activeNewSessionDraftKeyRef.current;
     if (previousDraftKey && currentFreshCwd) {
       rekeyDraft(previousDraftKey, parkedNewSessionDraftKey(currentFreshCwd));
@@ -966,6 +980,8 @@ export function AppShell() {
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, options?: SelectSessionOptions) => {
+    setTaskPageOpen(false);
+    setTempChatDraft(false);
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
     invalidateWorkspaceRestore();
     const activeDraftKey = activeNewSessionDraftKeyRef.current;
@@ -1022,6 +1038,8 @@ export function AppShell() {
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, router, isMobile, newSessionCwd, selectedSession]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string, projectKey?: string | null, options?: NewSessionOptions) => {
+    setTaskPageOpen(false);
+    setTempChatDraft(false);
     invalidateWorkspaceRestore();
     const draftKey = `new:${sessionId}:${cwd}`;
     // Leaving a fresh composer for another cwd parks its draft there, as a
@@ -1103,9 +1121,15 @@ export function AppShell() {
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo, sourceDraftKey: string) => {
     setRefreshKey((k) => k + 1);
+    if (sourceDraftKey.startsWith("temp:")) tempChatStarted.current(sourceDraftKey.slice(5));
     if (activeNewSessionDraftKeyRef.current !== sourceDraftKey) return;
     invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
+    if (sourceDraftKey.startsWith("temp:")) {
+      setTempChatDraft(false);
+      activeProjectKeyRef.current = workspaceKeyOf(session);
+      setActiveCwd(session.cwd);
+    }
     setNewSessionCwd(null);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
@@ -1514,10 +1538,15 @@ export function AppShell() {
   }, [selectedSession]);
 
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
-  const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
-  const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd
+  const effectiveNewSessionCwd = tempChatDraft ? null : newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
+  const newSessionDraftKey = tempChatDraft ? `temp:${newSessionDraftId}` : selectedSession === null && effectiveNewSessionCwd
     ? `new:${newSessionDraftId}:${effectiveNewSessionCwd}`
     : null;
+  useLayoutEffect(() => {
+    if (!newSessionDraftKey?.startsWith("temp:")) return;
+    // Preserve image/text drafts and their own file folder across project switches.
+    return () => { rekeyDraft(newSessionDraftKey, "parked:temp-chat"); };
+  }, [newSessionDraftKey]);
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
@@ -1570,7 +1599,7 @@ export function AppShell() {
       onCreateWorktree={handleCreateNewSessionWorktree}
     />
   ) : null;
-  const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
+  const showChat = tempChatDraft || selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
@@ -1661,8 +1690,67 @@ export function AppShell() {
     return () => observer.disconnect();
   }, [windowTitle]);
 
+  // Desktop fork: the fresh composer of a General chat, a chat that belongs to
+  // no project. Its folder was reserved ahead (hooks/useTempChatDirectories.ts)
+  // and goes to the chat alone: the shell keeps no project and no cwd for it.
+  const showTempChat = () => {
+    invalidateWorkspaceRestore();
+    const held = heldTempChat.current;
+    if (!tempChatDraft && held) {
+      const oldKey = activeNewSessionDraftKeyRef.current;
+      const oldCwd = newSessionCwd ?? activeCwd;
+      if (oldKey && oldCwd) rekeyDraft(oldKey, parkedNewSessionDraftKey(oldCwd));
+      changeFileWorkspace(activeProjectKeyRef.current, `temp:${held.id}`);
+      activeProjectKeyRef.current = null;
+      setActiveCwd(null);
+      setNewSessionCwd(null);
+      setSelectedSession(null);
+      rekeyDraft("parked:temp-chat", `temp:${held.id}`);
+      setNewSessionDraftId(held.id);
+      setSessionKey((key) => key + 1);
+      setTempChatDraft(true);
+      setBranchTree([]);
+      setBranchActiveLeafId(null);
+      setSystemPrompt(null);
+      setSystemTools(null);
+      setCarriedNewSessionChoices(null);
+      router.replace("/", { scroll: false });
+    }
+    setActiveTopPanel((panel) => panel === "debug" ? panel : null);
+    setRightPanelOpen(false);
+    setTaskPageOpen(false);
+    if (isMobile) setSidebarOpen(false);
+    else requestAnimationFrame(() => chatInputRef.current?.focus());
+  };
+  // What a reservation that comes back later shows: the page as it is then.
+  const showTempChatRef = useRef(showTempChat);
+  showTempChatRef.current = showTempChat;
+  /** At once, as the folder is held ahead; in the moment it is not (the page just loaded), once it is. */
+  const openTempChat = (): void | Promise<void> => {
+    if (tempChatDraft || heldTempChat.current) return showTempChat();
+    return prepareTempChat().then(() => showTempChatRef.current());
+  };
+
+  // Desktop fork: what this shell adds to the sidebar. It goes down in a context,
+  // so SessionSidebar's props stay pi-web's (hooks/useDesktopSidebar.ts).
+  const desktopSidebar: DesktopSidebar = {
+    taskPageOpen,
+    onOpenTasks: () => {
+      setTaskPageOpen(true);
+      setRightPanelOpen(false);
+      setActiveTopPanel(null);
+      if (isMobile) setSidebarOpen(false);
+    },
+    onTaskStatusChange: handleTaskStatus,
+    tempChatDraft,
+    tempChatCwds,
+    chatDirectoriesReady,
+    onNewTempChat: openTempChat,
+  };
+
   const sidebarContent = (
     <>
+      <DesktopSidebarContext.Provider value={desktopSidebar}>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
         onSelectSession={handleSelectSession}
@@ -1689,6 +1777,7 @@ export function AppShell() {
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
       />
+      </DesktopSidebarContext.Provider>
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([
           ["models", translate("common.models")],
@@ -2524,6 +2613,7 @@ export function AppShell() {
               </svg>
             )}
           </button>
+          {taskPageOpen ? <strong style={{ paddingInline: 12, fontSize: 13 }}>{translate("tasks.title")}</strong> : <>
           {isMobile && (
             <div
               ref={mobileToolbarRef}
@@ -2627,6 +2717,7 @@ export function AppShell() {
               hideInlineButton
             />
           )}
+          </>}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
             <div style={{
@@ -2879,7 +2970,7 @@ export function AppShell() {
           )}
 
         </div>
-        {agentStripMembers && activeSessionFamily && selectedSession && activeTopPanel !== "agents" && (
+        {!taskPageOpen && agentStripMembers && activeSessionFamily && selectedSession && activeTopPanel !== "agents" && (
           <AgentMiniStrip
             rootSession={activeSessionFamily.root}
             members={agentStripMembers}
@@ -2890,11 +2981,18 @@ export function AppShell() {
             onToggleLock={handleToggleAgentStripLock}
           />
         )}
-        {isMobile && renderProjectTrustWarning(true)}
+        {!taskPageOpen && isMobile && renderProjectTrustWarning(true)}
         </div>
 
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          {taskPageOpen && (
+            <TasksPage sessions={sessionsWithSelection} runningSessionIds={runningSessionIds}
+              awaitingInputSessionIds={taskStatus.awaiting} subagentsActiveSessionIds={taskStatus.subagents}
+              tempChatCwds={tempChatCwds} loading={!catalogLoaded}
+              onOpenSession={(id) => { const row = sessionsWithSelection.find((s) => s.id === id); if (row) handleSelectSession(row); }} />
+          )}
+          <div hidden={taskPageOpen} inert={taskPageOpen} style={{ height: "100%" }}>
           {showChat ? (
             <ChatWindow
               key={sessionKey}
@@ -2904,7 +3002,7 @@ export function AppShell() {
               initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
               onScrollPositionChange={handleSessionScrollPositionChange}
               sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
-              newSessionCwd={effectiveNewSessionCwd}
+              newSessionCwd={tempChatDraft ? heldTempChat.current?.cwd ?? null : effectiveNewSessionCwd}
               newSessionDraftKey={newSessionDraftKey}
               newSessionContextBar={newSessionContextBar}
               initialNewSessionChoices={selectedSession === null ? carriedNewSessionChoices : null}
@@ -2978,6 +3076,7 @@ export function AppShell() {
               </div>
             )
           ) : null}
+          </div>
         </div>
       </div>
 

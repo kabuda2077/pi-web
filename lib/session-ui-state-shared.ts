@@ -45,6 +45,8 @@ export interface SessionUiState {
   revision: number;
   sessions: Record<string, SessionUiFamilyState>;
   projects: Record<string, SessionUiProjectState>;
+  /** Explicitly created folders remain discoverable before their first saved session. Not pins. */
+  createdProjects?: Record<string, string>;
   /**
    * projectKeys of the sidebar's groups, top first, pinned and other projects
    * in one list (each band keeps the relative order of its own keys). Keys of
@@ -77,6 +79,7 @@ export type SessionUiStateRequest =
   /** Undo: writes back exact prior values (null = absent). */
   | { action: "restore"; entries: SessionUiFlagsSnapshot[] }
   | { action: "pin-project"; projectKey: string; root: string; pinned: boolean }
+  | { action: "register-project"; projectKey: string; root: string }
   /** New projects, top first: the ones `projectOrder` lacks go in front of it. Never pushes a key out. */
   | { action: "add-projects"; keys: string[] }
   /**
@@ -229,6 +232,18 @@ export function normalizeSessionUiState(value: unknown): SessionUiState | null {
     const project = normalizeProject(entry);
     if (project) state.projects[key] = project;
   }
+  if (isPlainObject(value.createdProjects)) {
+    let count = 0;
+    let bytes = 1;
+    for (const [key, root] of Object.entries(value.createdProjects)) {
+      if (!isProjectString(key) || !isProjectString(root)) continue;
+      const size = nameEntryBytes(key, root);
+      if (!namesFit(count + 1, bytes + size)) continue;
+      (state.createdProjects ??= {})[key] = root;
+      count++;
+      bytes += size;
+    }
+  }
   // Anything but an array reads as no order: it is cheap to rebuild, and no
   // reason to set pins and archive aside with a file taken for corrupt.
   if (Array.isArray(value.projectOrder)) {
@@ -362,6 +377,7 @@ export function parseSessionUiStateRequest(body: unknown): ParseResult {
       }
       return { ok: true, request: { action: "restore", entries } };
     }
+    case "register-project":
     case "pin-project": {
       if (!isProjectString(body.projectKey)) {
         return { ok: false, error: `projectKey must be a non-empty string of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
@@ -369,6 +385,7 @@ export function parseSessionUiStateRequest(body: unknown): ParseResult {
       if (!isProjectString(body.root)) {
         return { ok: false, error: `root must be a non-empty string of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
       }
+      if (body.action === "register-project") return { ok: true, request: { action: body.action, projectKey: body.projectKey, root: body.root } };
       if (typeof body.pinned !== "boolean") return { ok: false, error: "pinned must be a boolean" };
       return { ok: true, request: { action: "pin-project", projectKey: body.projectKey, root: body.root, pinned: body.pinned } };
     }
@@ -461,6 +478,7 @@ function copyState(state: SessionUiState): SessionUiState {
   // Only when present: an explicit undefined would not equal an absent field.
   if (state.projectOrder) copy.projectOrder = [...state.projectOrder];
   if (state.projectNames) copy.projectNames = { ...state.projectNames };
+  if (state.createdProjects) copy.createdProjects = { ...state.createdProjects };
   if (state.readAt) copy.readAt = { ...state.readAt };
   return copy;
 }
@@ -612,6 +630,16 @@ export function applySessionUiStateRequest(
         if (writeFamily(next.sessions, entry.id, family)) changed = true;
       }
       break;
+    case "register-project": {
+      const { projectKey, root } = request;
+      if (next.createdProjects?.[projectKey] === root) break;
+      const entries = { ...next.createdProjects, [projectKey]: root };
+      if (namesFit(Object.keys(entries).length, namesBytes(entries))) {
+        next.createdProjects = entries;
+        changed = true;
+      }
+      break;
+    }
     case "pin-project": {
       const { projectKey, root } = request;
       const previous = hasOwn(next.projects, projectKey) ? next.projects[projectKey] : undefined;

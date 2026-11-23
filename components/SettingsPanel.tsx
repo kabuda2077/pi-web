@@ -38,6 +38,7 @@ import { PluginsConfig } from "./PluginsConfig";
 import { McpConfig } from "./McpConfig";
 import { ConfigButton, ConfigDetailNavigationContext, ConfigSwitch, type ConfigDetailNavigation } from "./SettingsUi";
 import { FontSettings } from "./FontSettings";
+import { TempChatSettings } from "./TempChatSettings";
 
 interface Props {
   cwd: string | null;
@@ -414,6 +415,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.sidebar")}</h3>
+        <TempChatSettings />
         <div className="settings-chat-options">
           <div
             className="settings-chat-option settings-chat-switch-option"
