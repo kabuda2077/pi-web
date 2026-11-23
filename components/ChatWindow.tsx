@@ -17,7 +17,8 @@ import { MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, getUserMessageDraftImages, getUserMessageText, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
-import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { useMessageRefs } from "./ChatMinimap";
+import { TurnNavigator } from "./TurnNavigator";
 import { QuoteSelectionPopover } from "./QuoteSelectionPopover";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
@@ -103,7 +104,7 @@ interface Props {
   /** Keeps the completion sound's audio running until the returned release is called. */
   holdAudio?: () => () => void;
 }
-const CHAT_MINIMAP_WIDTH = 36;
+const CHAT_MINIMAP_WIDTH = 0; // Desktop fork: no rail at the right; TurnNavigator stands in the left margin.
 const CHAT_COLUMN_PADDING = 16;
 
 // One update check per page. Every fresh composer mounts the header again
@@ -1303,8 +1304,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </div>
           </div>
         </div>
-        {isMobile || pendingScrollRestore ? null : (
-          <ChatMinimap
+        {isMobile || panel || pendingScrollRestore ? null : (
+          <TurnNavigator
+            key={session?.id}
+            column={messageContentRef}
+            visibleCount={visibleCount}
             messages={messages}
             getStreamingMessage={getStreamingMessage}
             scrollContainer={scrollContainerRef}

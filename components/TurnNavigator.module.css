@@ -1,0 +1,69 @@
+.navigator {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  z-index: 8;
+  width: 40px;
+  transform: translateY(-50%);
+}
+.track {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+  cursor: ns-resize;
+}
+.track:focus-visible { outline: none; }
+.track:focus-visible .tick[data-distance="0"],
+.track:focus-visible .tick[data-current]:not([data-distance]) {
+  background: var(--accent);
+  width: 22px;
+  height: 3px;
+  opacity: 1;
+}
+.card:focus-visible { outline: 2px solid var(--accent); }
+.tick {
+  position: absolute;
+  left: 4px;
+  width: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+  opacity: .17;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: width 100ms ease, opacity 100ms ease;
+}
+.tick[data-current] { opacity: .38; }
+.tick[data-distance="2"] { width: 14px; opacity: .3; }
+.tick[data-distance="1"] { width: 17px; opacity: .45; }
+.tick[data-distance="0"] { width: 22px; opacity: .74; }
+.card {
+  position: absolute;
+  left: calc(100% - 1px);
+  transform: translateY(-50%);
+  width: 360px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 6px 22px rgb(0 0 0 / .12);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.card strong, .card span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  font-size: 14px;
+}
+.card strong { font-weight: 600; }
+.card span { margin-top: 5px; color: var(--text-muted); }
+.card small { display: block; margin-top: 7px; color: var(--text-dim); font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .tick { transition: none; } }
