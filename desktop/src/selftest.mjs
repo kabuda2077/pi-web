@@ -165,6 +165,7 @@ async function pageProbe({ cwd }) {
 
 const LINK_TEXT = "the report";
 const SESSION_ID = "0199c0de-0000-7000-8000-00000000f11e";
+const NAV_SESSION_ID = "0199c0de-0000-7000-8000-000000000a11";
 
 /**
  * A session whose reply links a file of its folder the way a model writes one:
@@ -178,36 +179,35 @@ function writeLinkedFileSession(shell, workDir) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, "# Report\n");
 
-  const at = new Date();
+  writeFixtureSession(shell, workDir, SESSION_ID, [["Write the report.", `Saved [${LINK_TEXT}](notes/the%20report.md).`]]);
+  return filePath;
+}
+
+function writeFixtureSession(shell, workDir, sessionId, turns) {
+  // The crash scenario reopens the same work directory: keep one file per fixture ID.
+  const at = fs.statSync(workDir).birthtime;
   const stamp = at.toISOString();
   const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-  const entries = [
-    { type: "session", version: 3, id: SESSION_ID, timestamp: stamp, cwd: workDir },
-    { type: "message", id: "a0000001", parentId: null, timestamp: stamp, message: { role: "user", content: [{ type: "text", text: "Write the report." }], timestamp: at.getTime() } },
-    {
-      type: "message",
-      id: "a0000002",
-      parentId: "a0000001",
-      timestamp: stamp,
-      message: {
-        role: "assistant",
-        content: [{ type: "text", text: `Saved [${LINK_TEXT}](notes/the%20report.md).` }],
-        api: "openai-responses",
-        provider: "self-test",
-        model: "self-test",
-        usage,
-        stopReason: "stop",
-        timestamp: at.getTime(),
-      },
-    },
-  ];
+  const entries = [{ type: "session", version: 3, id: sessionId, timestamp: stamp, cwd: workDir }];
+  let parentId = null;
+  const add = (text, message) => {
+    const id = entries.length.toString(16).padStart(8, "0");
+    entries.push({ type: "message", id, parentId, timestamp: stamp, message: { ...message, content: [{ type: "text", text }], timestamp: at.getTime() } });
+    parentId = id;
+    return id;
+  };
+  const userIds = turns.map(([prompt, reply]) => {
+    const id = add(prompt, { role: "user" });
+    add(reply, { role: "assistant", api: "openai-responses", provider: "self-test", model: "self-test", usage, stopReason: "stop" });
+    return id;
+  });
   const sessionDir = path.join(shell.dir, "agent", "sessions", `--${workDir.replace(/[\\/:]/g, "-")}--`);
   fs.mkdirSync(sessionDir, { recursive: true });
   fs.writeFileSync(
-    path.join(sessionDir, `${stamp.replace(/[:.]/g, "-")}_${SESSION_ID}.jsonl`),
+    path.join(sessionDir, `${stamp.replace(/[:.]/g, "-")}_${sessionId}.jsonl`),
     entries.map((entry) => `${JSON.stringify(entry)}\n`).join(""),
   );
-  return filePath;
+  return userIds;
 }
 
 /** A click of a mouse button at a point of the page, as the user's own. */
@@ -222,8 +222,7 @@ function click(webContents, { x, y }, button) {
  * the menu of a file link in the chat, and the file panel's "Show in Explorer"
  * button. Both end in the shell's record instead of on screen.
  */
-async function probeFileActions(shell, win, workDir, check) {
-  const filePath = writeLinkedFileSession(shell, workDir);
+async function probeFileActions(shell, win, filePath, check) {
   const samePath = (value) => typeof value === "string" && value.toLowerCase() === filePath.toLowerCase();
   const requests = shell.fileRequests();
   const webContents = win.webContents;
@@ -237,9 +236,10 @@ async function probeFileActions(shell, win, workDir, check) {
   );
   check("a session's reply shows its file link", link, link ? undefined : await describeWindow(shell));
   if (!link) return;
+  check("a single-turn chat has no visible navigator", await run(`!document.querySelector('[data-turn-navigator]')?.checkVisibility()`));
 
   // The user's own message is no file link: the page's usual menu, as before.
-  const plain = await run(`(() => { const el = [...document.querySelectorAll("p, div, span")].reverse().find((node) => node.textContent === "Write the report."); return el ? ${center}(el) : null; })()`);
+  const plain = await run(`(() => { const el = [...document.querySelectorAll("[data-entry-id] p, [data-entry-id] div, [data-entry-id] span")].reverse().find((node) => node.textContent === "Write the report."); return el ? ${center}(el) : null; })()`);
   check("the session shows the user's message", plain);
   if (plain) {
     click(webContents, plain, "right");
@@ -277,6 +277,146 @@ async function probeFileActions(shell, win, workDir, check) {
   await run(`document.querySelector("#file-panel a[download]").previousElementSibling.click()`);
   const reveal = await waitFor(() => requests.find((entry) => entry.action === "reveal"), 5000);
   check("the button shows the file in Explorer", samePath(reveal?.select), { asked: reveal, file: filePath });
+}
+
+// Runs in the renderer. A prompt behind the header or composer is not a successful jump.
+function turnNavigationState(ids) {
+  const rows = ids.map((id) => document.querySelector(`[data-entry-id="${id}"]`));
+  const mounted = rows.find(Boolean);
+  if (!mounted) return null;
+  let port = mounted.parentElement;
+  while (port && !["auto", "scroll"].includes(getComputedStyle(port).overflowY)) port = port.parentElement;
+  if (!port) return null;
+  const view = port.getBoundingClientRect();
+  const box = (el) => el?.checkVisibility({ visibilityProperty: true, opacityProperty: true }) && el.getBoundingClientRect().toJSON();
+  const nav = document.querySelector("[data-turn-navigator]");
+  const columnLeft = mounted.getBoundingClientRect().left;
+  return {
+    rail: box(nav), role: nav?.getAttribute("role"), turn: Number(nav?.getAttribute("aria-valuenow")),
+    columnLeft, gutter: columnLeft - view.left, first: Number(nav?.getAttribute("aria-valuemin")),
+    ticks: nav ? [...nav.children].map(el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.left + 3), y: Math.round(r.top + r.height / 2) }; }) : [],
+    visible: rows.map((row) => { const r = row?.getBoundingClientRect(); return !!r && r.top >= view.top - 1 && r.bottom <= view.bottom + 1; }),
+    cards: [...document.querySelectorAll("[data-turn-preview]")].map((el) => ({ box: box(el), text: el.textContent })).filter((card) => card.box),
+  };
+}
+
+function writeTurnSession(shell, workDir) {
+  const prompts = Array.from({ length: 32 }, (_, i) => `Review section ${i + 1}.`);
+  // One screen cannot show adjacent prompts together.
+  const longReply = Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}.`).join("\n\n");
+  const ids = writeFixtureSession(shell, workDir, NAV_SESSION_ID, prompts.map((prompt, i) => [prompt, i >= 25 && i < 31 ? longReply : "Done."]));
+  return { ids, prompts };
+}
+
+async function probeTurnNavigator(shell, win, { ids, prompts }, check) {
+  const wc = win.webContents;
+  const run = (source) => wc.executeJavaScript(source, true);
+  const state = () => run(`(${turnNavigationState})(${JSON.stringify(ids)})`);
+  const matches = (test, ms = 5000) => waitFor(async () => { const s = await state(); return s && test(s) && s; }, ms);
+  const at = (n) => matches((s) => s.turn === n && s.visible[n - 1]);
+  const key = (name) => run(`(() => {
+    const rail = document.querySelector('[data-turn-navigator]');
+    rail?.focus();
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(name)}, bubbles: true, cancelable: true }));
+  })()`);
+  await wc.loadURL(`${shell.backend.origin}/?session=${NAV_SESSION_ID}`);
+  const wide = await matches((s) => s.rail && s.gutter >= 64, PAGE_TIMEOUT_MS);
+  check("a wide chat shows a turn slider in the left gutter", wide?.role === "slider" && wide.rail.right <= wide.columnLeft, wide ?? await state());
+  if (!wide) return;
+  check("the idle navigator has no preview", wide.cards.length === 0, wide.cards);
+  await key("End");
+  check("End jumps to the last prompt", await at(32));
+
+  // Hovering the first turn changes the preview, not the transcript's position.
+  const point = (s, n) => s.ticks[n - s.first];
+  const move = (s, n) => wc.sendInputEvent({ type: "mouseMove", ...point(s, n) });
+  const hasLabel = (s) => s.cards.length === 1 && s.cards[0].text.includes(prompts[26]) && s.cards[0].text.includes("27/32");
+  move(wide, 27);
+  const hovered = await matches(s => s.cards.length === 1 && s.cards[0].text.includes(prompts[26]) && !s.visible[26] && s.visible[31]);
+  check("hover previews just the target turn without scrolling", hovered, hovered ? undefined : await state());
+  check("the partial page labels its 27th turn 27/32", wide.first > 1 && wide.ticks.length < 32 && hovered && hasLabel(hovered));
+
+  // A hidden window coalesces scroll events. Observe the request on the real
+  // scrollport and forward it unchanged; at() independently checks its result.
+  await run(`(() => {
+    let port = document.querySelector("[data-entry-id]");
+    while (port && !["auto", "scroll"].includes(getComputedStyle(port).overflowY)) port = port.parentElement;
+    window.navProbe = { port, modes: [] };
+    const scrollTo = port.scrollTo.bind(port);
+    port.scrollTo = (...args) => { window.navProbe.modes.push(args[0]?.behavior); return scrollTo(...args); };
+  })()`);
+  const clearTrace = () => run("window.navProbe.modes.length = 0");
+  const checkMotion = async (name) => {
+    const trace = await run(`({ modes: window.navProbe.modes, reduced: matchMedia("(prefers-reduced-motion: reduce)").matches })`);
+    check(name, trace.modes.length > 0 && trace.modes.every(mode => mode === (trace.reduced ? "instant" : "smooth")), trace);
+  };
+  if (hovered) {
+    const card = hovered.cards[0].box;
+    await clearTrace();
+    click(wc, { x: Math.round(card.x + card.width / 2), y: Math.round(card.y + card.height / 2) }, "left");
+    check("clicking the preview jumps to its prompt", await at(27));
+    await checkMotion("preview click animates unless reduced motion is requested");
+  }
+  wc.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
+  check("moving off the navigator dismisses its preview", await matches((s) => !s.cards.length));
+  await key("ArrowDown");
+  check("ArrowDown jumps to the next prompt", await at(28));
+  await key("ArrowUp");
+  check("ArrowUp jumps to the previous prompt", await at(27));
+
+  await clearTrace();
+  const from = point(wide, 30), to = point(wide, 28);
+  wc.sendInputEvent({ type: "mouseMove", ...from });
+  wc.sendInputEvent({ type: "mouseDown", ...from, button: "left", clickCount: 1 });
+  try {
+    check("pressing a tick reaches its prompt", await at(30));
+    await checkMotion("tick press animates unless reduced motion is requested");
+    const focus = await run(`(() => {
+      const rail = document.querySelector("[data-turn-navigator]");
+      const css = getComputedStyle(rail);
+      return { focused: rail === document.activeElement, outline: css.outlineStyle, shadow: css.boxShadow };
+    })()`);
+    check("the clicked slider has focus without a full rail ring", focus.focused && focus.outline === "none" && focus.shadow === "none", focus);
+    // Measure after React handles this very pointermove, before a smooth scroll could finish.
+    await run(`document.addEventListener("pointermove", e => {
+      const rail = document.querySelector("[data-turn-navigator]");
+      const target = document.querySelector(${JSON.stringify(`[data-entry-id="${ids[27]}"]`)});
+      window.navProbe.drag = { captured: rail.hasPointerCapture(e.pointerId), offset: target.getBoundingClientRect().top - window.navProbe.port.getBoundingClientRect().top };
+    }, { once: true })`);
+    wc.sendInputEvent({ type: "mouseMove", ...to, modifiers: ["leftButtonDown"] });
+    const drag = await waitFor(() => run("window.navProbe.drag"), 5000);
+    check("drag reaches the new prompt in the pointer event itself", drag?.captured && Math.abs(drag.offset - 16) < 3, drag);
+  } finally {
+    wc.sendInputEvent({ type: "mouseUp", ...to, button: "left", clickCount: 1 });
+  }
+
+  // An offscreen window has no OS keyboard focus. Ask Chromium to resolve the
+  // real :focus-visible rules without depending on the foreground application.
+  wc.debugger.attach();
+  try {
+    const send = (method, params) => wc.debugger.sendCommand(method, params);
+    await send("DOM.enable");
+    await send("CSS.enable");
+    const { root } = await send("DOM.getDocument");
+    const { nodeId } = await send("DOM.querySelector", { nodeId: root.nodeId, selector: "[data-turn-navigator]" });
+    await send("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: ["focus-visible"] });
+    const focus = await run(`(() => {
+      const rail = document.querySelector("[data-turn-navigator]");
+      const i = Number(rail.ariaValueNow) - Number(rail.ariaValueMin);
+      const tick = getComputedStyle(rail.children[i]);
+      const other = getComputedStyle(rail.children[i ? 0 : 1]);
+      return { outline: getComputedStyle(rail).outlineStyle, shadow: getComputedStyle(rail).boxShadow,
+        thicker: parseFloat(tick.height) > parseFloat(other.height), accent: tick.backgroundColor !== other.backgroundColor };
+    })()`);
+    check("keyboard focus highlights the selected tick, not the entire rail", focus.outline === "none" && focus.shadow === "none" && focus.thicker && focus.accent, focus);
+  } finally { wc.debugger.detach(); }
+
+  await run("window.navProbe.port.scrollTop = 0");
+  const full = await matches(s => s.first === 1 && s.ticks.length === 32);
+  if (full) move(full, 27);
+  check("loading older history preserves the same prompt and 27/32 label", full && await matches(hasLabel));
+  win.setContentSize(840, 760);
+  check("a narrow chat hides the navigator and its preview", await matches((s) => s.gutter < 64 && !s.rail && !s.cards.length));
 }
 
 /** The `server-fails` scenario: the server cannot start, and the window must say so and offer a way on. */
@@ -318,6 +458,9 @@ async function probe(shell, report) {
   const { backend } = shell;
   const workDir = path.join(shell.dir, "work");
   fs.mkdirSync(workDir, { recursive: true });
+  // Deep links restore from the session catalogue; both fixtures must be in its first snapshot.
+  const linkPath = writeLinkedFileSession(shell, workDir);
+  const turnFixture = writeTurnSession(shell, workDir);
 
   check("server is running", backend.running, backend.origin);
   const win = await pageReady(shell);
@@ -374,7 +517,17 @@ async function probe(shell, report) {
   check("the page reloads after the restart", reloaded);
   report.serverPids.push(...serverPids(shell));
 
-  if (reloaded) await probeFileActions(shell, reloaded, workDir, check);
+  if (reloaded) {
+    const original = reloaded.getContentSize();
+    try {
+      reloaded.setContentSize(1760, 760);
+      await probeTurnNavigator(shell, reloaded, turnFixture, check);
+      reloaded.setContentSize(1760, 760);
+      await probeFileActions(shell, reloaded, linkPath, check);
+    } finally {
+      reloaded.setContentSize(...original);
+    }
+  }
 }
 
 /** The running server's launcher and Next.js process ids, the second from pi-web's own run record. */

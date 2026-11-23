@@ -2,3 +2,13 @@
    Loaded after pi-web's stylesheets (app/layout.tsx), so a rule here that names
    the same element as one of pi-web's wins at equal weight. pi-web's own
    stylesheets stay as upstream has them. One section per change. */
+
+/* ── The turn navigator ──────────────────────────────────────────────────────
+   pi-web keeps 36px free at the right of the new-session header and of the
+   composer, for its rail there (52px of padding against 16px at the left).
+   Without the rail both sides are 16px. pi-web sets these paddings inline
+   (components/ChatWindow.tsx, ChatInput.tsx), which only !important overrides:
+   its files stay as they are. */
+.new-session-hero, .chat-input-shell {
+  padding-right: 16px !important;
+}

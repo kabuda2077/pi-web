@@ -34,6 +34,7 @@ The shell:
 The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
 
 - The file panel has a button left of Download that shows the file in Explorer. Right-click on a file link in the chat: Open (in the file panel), Show in Explorer, Copy path.
+- A turn navigator in the chat's left margin takes the place of pi-web's rail on the right: one tick a turn, a card with the turn's prompt and reply on hover, click or drag to go there.
 
 ## Data
 
@@ -78,12 +79,21 @@ off screen and on a throwaway profile and agent directory, three times:
   streams open, closing and reopening the window works, the server restarts on the same
   address. Then each change to the pages, in the built app:
   - the file link's menu and the file panel's button reach the shell with the file's full path
+  - the turn navigator
 - *server-fails*: a server that cannot start is reported, with Retry.
 - *app is killed*: killing the app leaves no server behind, and the next launch clears the run
   record the killed server left.
 
 It sends no message to a model, and it does not cover what only shows on a real screen: the
 tray icon and the notifications.
+
+The turn navigator check uses a temporary 32-turn transcript. It checks that hovering
+previews one turn without scrolling, and checks both the native scroll mode and the
+actual destination on tick and card clicks (smooth unless reduced motion is requested). During a drag
+it measures the target prompt inside the pointer event, before release. Mouse focus has
+no full-rail ring; keyboard focus highlights the selected tick. The card must identify
+the same prompt as 27/32 both before and after loading the older page. Arrow keys,
+narrow layouts and the single-turn file-link fixture are also checked.
 
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
 in `upstream-tests.baseline.json`: the tests that fail on this Windows machine whatever this
@@ -128,6 +138,7 @@ such a line without git noticing.
 | "Show in Explorer" button in the file panel | `components/DesktopFileActions.tsx`, `lib/desktop-host.ts`, `desktop/src/files.mjs`, `desktop/src/file-actions.mjs` | `components/FileViewer.tsx`: one import, and `DownloadLink()` renders the button before its link | gives a file panel a Download that is not `DownloadLink()` |
 | Menu of a file link in the chat | the same | `components/MarkdownBody.tsx`: one import, and `onContextMenu` on the `<a>` of a local file link | renders file links somewhere else than the `a()` renderer of `MarkdownBody` |
 | Unread markers: no cleanup is dispatched when no marker is read, and a running change that alters none keeps the Map it had | | `components/SessionSidebar.tsx`: three lines | (a fix of pi-web's; gone once upstream has it) |
+| Left turn navigator: smooth click, instant drag, keyboard focus on one tick, current/total on the card; hidden for one turn or a left gutter under 64 px | `components/TurnNavigator.tsx`, `components/TurnNavigator.module.css` | `components/ChatWindow.tsx`: renders it where `ChatMinimap` was (its `useMessageRefs` is still used), and `CHAT_MINIMAP_WIDTH` is 0 | changes transcript scrolling, turn grouping or page counts, the placement of the message column, or the inline padding of the composer and the new-session header (52 px at the right, which `app/desktop.css` sets back to 16) |
 
 For file actions the page reaches the shell through `window.piDesktopHost` (`src/preload.cjs`),
 which a browser does not have: there the button is absent and the browser's own menu stays.

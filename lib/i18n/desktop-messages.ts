@@ -7,10 +7,19 @@ import type { Locale, LocalePlugin } from "./types";
  */
 const desktopMessages: Record<Locale, Record<string, string>> = {
   en: {
+    // The turn navigator
+    "turnNavigator.label": "Conversation turns",
+    "turnNavigator.turn": "Turn {number}/{total}",
   },
   "zh-CN": {
+    // The turn navigator
+    "turnNavigator.label": "对话轮次",
+    "turnNavigator.turn": "第 {number}/{total} 轮",
   },
   "zh-TW": {
+    // The turn navigator
+    "turnNavigator.label": "對話輪次",
+    "turnNavigator.turn": "第 {number}/{total} 輪",
   },
 };
 
