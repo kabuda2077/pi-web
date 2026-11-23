@@ -737,6 +737,21 @@ async function probeNewProject(shell, win, workDir, check) {
   check("a folder made with Projects + is listed as a project before it has a session", listed, made);
 }
 
+/** Settings › General: two columns in a wide window, with the tool switches loaded in their place. */
+async function probeGeneralSettings(shell, win, check) {
+  const run = await openFixtureSession(shell, win, check);
+  if (!run) return;
+  await run(OPEN_SETTINGS);
+  const settings = await waitFor(() => run(`(() => {
+    const columns = [...document.querySelectorAll(".settings-general-layout > .settings-general-column")].map((el) => el.getBoundingClientRect());
+    const tools = document.querySelectorAll(".settings-builtin-tools input[type=checkbox]").length;
+    if (columns.length !== 2 || !tools) return null;
+    return { sideBySide: Math.round(columns[0].top) === Math.round(columns[1].top) && columns[1].left >= columns[0].right, gap: Math.round(columns[1].left - columns[0].right), tools };
+  })()`), PAGE_TIMEOUT_MS);
+  check("General settings show in two columns with the tool switches loaded", settings?.sideBySide && settings.gap === 32, settings ?? await describeWindow(shell));
+  check("Escape closes Settings", await closeSettings(win, run));
+}
+
 async function probeFailure(shell, report, check) {
   const failed = await waitFor(() => shell.serverState() === "failed", FAILURE_TIMEOUT_MS);
   check("a server that cannot start is reported as failed", failed);
@@ -844,6 +859,7 @@ async function probe(shell, report) {
       await probeTasksPage(shell, reloaded, check);
       await probeGeneralChats(shell, reloaded, check);
       await probeNewProject(shell, reloaded, workDir, check);
+      await probeGeneralSettings(shell, reloaded, check);
       await probeFileActions(shell, reloaded, linkPath, check);
     } finally {
       reloaded.setContentSize(...original);

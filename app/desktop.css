@@ -192,3 +192,133 @@ html[data-desktop-caption] :is([data-desktop-bar="center"], [data-mobile-toolbar
 .new-project-dialog footer button[type="submit"] { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
 .new-project-dialog button:not(:disabled) { cursor: pointer; }
 .new-project-dialog button:disabled { opacity: .55; }
+
+/* ── General settings in two columns ─────────────────────────────────────────
+   pi-web lays General out as one centered column (app/settings.css). Here its
+   sections sit in .settings-general-layout > .settings-general-column
+   (components/SettingsPanel.tsx). `unset` marks a declaration of pi-web's that
+   this layout drops. */
+
+/* The dialog owns one scroll area. The two columns flow independently. */
+.settings-general {
+  container: general-settings / inline-size;
+  padding: unset;
+}
+
+.settings-general-layout {
+  display: grid;
+  align-items: start;
+  gap: 28px;
+  max-width: 600px;
+  margin-inline: auto;
+  padding: 24px 18px 32px;
+}
+
+.settings-general-column {
+  display: grid;
+  min-width: 0;
+  gap: 28px;
+}
+
+@container general-settings (min-width: 900px) {
+  .settings-general-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 1040px;
+    column-gap: 32px;
+    padding-inline: 32px;
+  }
+}
+
+/* The columns' gap parts the sections. */
+.settings-general-column .settings-general-section {
+  margin-top: unset;
+}
+
+.settings-general-heading {
+  margin-bottom: 10px;
+}
+
+.settings-general-subheading {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-general-subsection + * { margin-top: 16px; }
+
+/* Two rows of five palettes, then four wider choices including System. */
+.settings-theme-options {
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  grid-auto-rows: 34px;
+  gap: 8px 5px;
+  max-width: unset;
+  padding: unset;
+}
+
+.settings-theme-option {
+  grid-column: span 4;
+}
+
+.settings-theme-option[data-system],
+.settings-theme-option[data-wide] {
+  grid-column: span 5;
+}
+
+.settings-theme-system {
+  gap: 0;
+}
+
+.settings-theme-chip {
+  width: 6px;
+  height: 10px;
+}
+
+.settings-theme-system-name {
+  margin-left: 3px;
+  white-space: unset;
+  text-align: center;
+  line-height: 1.15;
+}
+
+/* Rows are as wide as their column. */
+.settings-chat-options,
+.settings-builtin-tools,
+.settings-language-options,
+.settings-shell-option {
+  max-width: unset;
+}
+
+.settings-builtin-tools {
+  position: relative;
+}
+
+.settings-builtin-tools .settings-send-mode-option {
+  display: grid;
+  justify-items: center;
+}
+
+/* Reserve the selected label width, including both names of the shell tool. */
+.settings-builtin-tools .settings-send-mode-option::before {
+  content: attr(data-width-label);
+  visibility: hidden;
+  font-weight: 600;
+  grid-area: 1 / 1;
+}
+
+.settings-builtin-tools .settings-send-mode-label {
+  grid-area: 1 / 1;
+}
+
+.settings-tools-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-ui);
+}
+
+.settings-tools-placeholder, .settings-tool-pending-value {
+  color: var(--text-muted);
+  font-size: 12px;
+}

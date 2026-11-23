@@ -41,6 +41,7 @@ The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
   - **General** holds chats that belong to no project. Each gets a folder of its own and is an ordinary pi session there, with the tools and permissions of one in a project.
   - **Projects** holds pi-web's project groups; its + makes a new named folder and opens it.
 - Settings › Models: adding the models a provider lists fills in what models.dev knows about each, and a provider can have a default context window for the models added to it.
+- Settings › General is laid out in two columns in a wide window, and keeps its rows in place while the tool settings load.
 
 ## Data
 
@@ -98,6 +99,7 @@ off screen and on a throwaway profile and agent directory, three times:
   - a General chat's composer in the folder reserved for it: pi-web's model list must serve
     that folder, or the composer shows "Access denied"
   - Projects +, and a folder made there staying listed
+  - General settings in two columns, with the tool switches loaded
 - *server-fails*: a server that cannot start is reported, with Retry.
 - *app is killed*: killing the app leaves no server behind, and the next launch clears the run
   record the killed server left.
@@ -136,6 +138,7 @@ model. A preview already serving its port is used as it is.
 
 - `e2e/model-import.mjs` (port 30243): a model import, with a catalog lookup that fails and one that answers late
 - `e2e/task-home.mjs` (port 30245): the tasks page, a General chat from its + to its first send, Projects +
+- `e2e/general-settings.mjs` (the same preview): Settings › General at five widths, with a slow and a failing tool-settings request
 
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
 in `upstream-tests.baseline.json`: the tests that fail on this Windows machine whatever this
@@ -181,6 +184,8 @@ How a change is made, so that it stays that way:
 - **No code goes between two functions pi-web's tests cut out by name.** They read
   `AppShell.tsx` and `SessionSidebar.tsx` as text, from `const handleNewSession` to the next
   `const hydrateSelectedSession`, and run the piece: a function put in between is run with it.
+- **A block of pi-web's that is wrapped keeps its indentation** (Settings › General's two
+  columns), so a merge shows the lines that changed and not the whole block.
 - **One commit a change**, with its rows of the table below and its checks.
   The sidebar's Tasks, General and Projects are one change: they share their look, the
   sidebar's state and their checks.
@@ -199,6 +204,7 @@ such a line without git noticing.
 | Tasks page | `components/TasksPage.tsx`, `components/TasksPage.module.css`, `lib/task-groups.ts` | `components/AppShell.tsx`: the page over the chat, which stays mounted; `components/SessionSidebar.tsx`: the entry and its count, the two status sets reported to the shell, and no row selected while the page shows; `hooks/useKeyboardShortcuts.ts`: `suspendGlobalAbort()`, so Esc stops no run from the page; `components/SidebarIcons.tsx`: one icon | stops polling `awaitingInputSessionIds` or `subagentsActiveSessionIds`, or keeps the global Esc somewhere else |
 | General chats, in a General section above Projects | `lib/temp-chats.ts`, `lib/temp-chat-path.ts`, `app/api/temp-chats/route.ts`, `hooks/useTempChatDirectories.ts`, `components/TempChatSettings.tsx`, `lib/sidebar-sections.ts`, `components/SidebarSectionRows.tsx` | `components/AppShell.tsx`: `showTempChat()` and `openTempChat()`, and the chat's folder as its composer's `newSessionCwd`; `lib/session-tree.ts`: the sections' rows when given `chats`, and a chat's folder kept out of the project groups; `components/SessionTree.tsx`: the rows' renderer; `components/SessionSidebar.tsx`: the sections' folds and the header button's target; `components/SettingsPanel.tsx`: the folder's row | starts a new session from something else than `newSessionCwd`, gives a folder access some other way than `allowFileRoot()`, or changes how `buildSessionTree()` orders its rows or `getRowOffsets()` sizes them |
 | Projects +: a new named folder, listed as a project from then on | `components/NewProjectDialog.tsx`, `hooks/useNewProjectFolder.ts`, `lib/directory-client.ts` | `lib/session-tree.ts`: `createdProjects` among the groups; `components/SessionSidebar.tsx`: the dialog; `components/DirectoryPicker.tsx`: `parentPicker`; `lib/session-ui-state*.ts`, `app/api/sessions/ui-state/route.ts`: `register-project` | changes what the ui-state file keeps, or what `POST /api/cwd/browse` and `/api/cwd/validate` answer |
+| Settings › General in two columns from 900 px; Appearance, Fonts and Language left, Chat, Workspace and Tools right; the tool rows hold their place while they load | a section of `app/desktop.css` | `components/SettingsPanel.tsx`: two wrappers around the sections, Language moved up, three sections under one heading, placeholders for the tool rows; `lib/theme.ts`: System last in the themes' order | adds a section to General (it lands in the right column), or sizes the themes' grid differently |
 
 The three rows of the sidebar also share `hooks/useDesktopSidebar.ts` and a section of
 `app/desktop.css`.
