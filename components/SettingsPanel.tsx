@@ -287,6 +287,9 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
   return (
     <div className="settings-general">
+      {/* Desktop fork: two columns. The sections keep pi-web's indentation, so a merge shows only what changed. */}
+      <div className="settings-general-layout">
+      <div className="settings-general-column">
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.appearance")}</h3>
         <div role="radiogroup" aria-label={t("settings.appearance")} className="settings-theme-options">
@@ -394,6 +397,32 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       </section>
 
       <section className="settings-general-section">
+        <h3 className="settings-general-heading">{t("common.language")}</h3>
+        <div role="radiogroup" aria-label={t("common.language")} className="settings-language-options">
+          {supportedLocales.map((plugin) => {
+            const selected = locale === plugin.id;
+            return (
+              <button
+                key={plugin.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setLocale(plugin.id as typeof locale)}
+                className="settings-language-option"
+              >
+                <span className="settings-language-radio">
+                  {selected && <span className="settings-language-radio-dot" />}
+                </span>
+                <span className="settings-language-label">{plugin.label}</span>
+                <span className="settings-language-code">{plugin.id}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+      </div>
+      <div className="settings-general-column">
+      <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.chat")}</h3>
         <div className="settings-chat-options">
           <div className="settings-chat-option settings-chat-switch-option">
@@ -489,7 +518,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       </section>
 
       <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("settings.sidebar")}</h3>
+        <h3 className="settings-general-heading">{t("settings.workspaceGroup")}</h3>
         <TempChatSettings />
         <div className="settings-chat-options">
           <div
@@ -528,51 +557,54 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         <p id="settings-files-placement-description" className="settings-general-description">{t("settings.filesPlacementDescription")}</p>
       </section>
 
-      {shellSettings && (
-        <section className="settings-general-section">
-          <h3 className="settings-general-heading">{t("settings.builtinTools")}</h3>
-          <p id="settings-builtin-tools-description" className="settings-general-description">{t("settings.builtinToolsDescription")}</p>
-          <div className="settings-send-mode-options settings-builtin-tools" role="group" aria-label={t("settings.builtinTools")} aria-describedby="settings-builtin-tools-description">
-            {SETTINGS_BUILTIN_TOOLS.map((name) => (
-              <label key={name} className="settings-send-mode-option">
-                <input
-                  type="checkbox"
-                  checked={shellSettings.builtinTools.includes(name)}
-                  disabled={builtinToolsSaving}
-                  onChange={(event) => void toggleBuiltinTool(name, event.target.checked)}
-                  className="sr-only"
-                />
-                <span className="settings-send-mode-label">{name === "bash" && shellSettings.powerShellEnabled ? "powershell" : name}</span>
-              </label>
-            ))}
-          </div>
-          {builtinToolsError && <p role="alert" className="settings-general-error">{builtinToolsError}</p>}
-        </section>
-      )}
-
-      {shellSettings?.isWindows && (
-        <section className="settings-general-section">
-          <h3 className="settings-general-heading">{t("settings.shellTool")}</h3>
-          <p className="settings-general-description">{t("settings.shellToolDescription")}</p>
-          <div className="settings-shell-option">
-            <span>{t("settings.usePowerShell")}</span>
-            <ConfigSwitch
-              checked={shellSettings.powerShellEnabled}
-              loading={shellSaving}
-              label={t("settings.usePowerShell")}
-              onChange={(enabled) => void togglePowerShell(enabled)}
-            />
-          </div>
-          {shellError && <p role="alert" className="settings-general-error">{shellError}</p>}
-        </section>
-      )}
-
       <section className="settings-general-section">
         <HttpProxyForm label={t("settings.httpProxy")} />
       </section>
 
       <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("settings.pushPermission")}</h3>
+        <h3 className="settings-general-heading">{t("settings.toolsNotifications")}</h3>
+        {/* Its three parts were sections of their own in pi-web and keep that indentation. */}
+        <section className="settings-general-subsection">
+          <h4 className="settings-general-subheading">{t("settings.builtinTools")}</h4>
+          <p id="settings-builtin-tools-description" className="settings-general-description">{t("settings.builtinToolsDescription")}</p>
+          <div className="settings-send-mode-options settings-builtin-tools" role="group" aria-label={t("settings.builtinTools")} aria-describedby="settings-builtin-tools-description" aria-busy={!shellSettings && !shellError}>
+            {SETTINGS_BUILTIN_TOOLS.map((name) => (
+              <label key={name} className="settings-send-mode-option" data-width-label={name === "bash" ? "powershell" : name} aria-hidden={!shellSettings || undefined}>
+                {shellSettings && <input
+                  type="checkbox"
+                  checked={shellSettings.builtinTools.includes(name)}
+                  disabled={builtinToolsSaving}
+                  onChange={(event) => void toggleBuiltinTool(name, event.target.checked)}
+                  className="sr-only"
+                />}
+                {shellSettings && <span className="settings-send-mode-label">{name === "bash" && shellSettings.powerShellEnabled ? "powershell" : name}</span>}
+              </label>
+            ))}
+            {!shellSettings && <span className="settings-tools-placeholder">{shellError ? "—" : t("i18n.loading")}</span>}
+          </div>
+          {!shellSettings && shellError && <p role="alert" className="settings-general-error">{shellError}</p>}
+          {builtinToolsError && <p role="alert" className="settings-general-error">{builtinToolsError}</p>}
+        </section>
+
+      {(!shellSettings || shellSettings.isWindows) && (
+        <section className="settings-general-subsection">
+          <h4 className="settings-general-subheading">{t("settings.shellTool")}</h4>
+          <p className="settings-general-description">{t("settings.shellToolDescription")}</p>
+          <div className="settings-shell-option">
+            <span>{t("settings.usePowerShell")}</span>
+            {shellSettings ? <ConfigSwitch
+              checked={shellSettings.powerShellEnabled}
+              loading={shellSaving}
+              label={t("settings.usePowerShell")}
+              onChange={(enabled) => void togglePowerShell(enabled)}
+            /> : <span className="settings-tool-pending-value">{shellError ? "—" : t("i18n.loading")}</span>}
+          </div>
+          {shellSettings && shellError && <p role="alert" className="settings-general-error">{shellError}</p>}
+        </section>
+      )}
+
+      <section className="settings-general-subsection">
+        <h4 className="settings-general-subheading">{t("settings.pushPermission")}</h4>
         <div className="settings-shell-option">
           <span>{t("settings.pushPermissionDescription")}</span>
           <button
@@ -594,30 +626,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           </p>
         )}
       </section>
-
-      <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("common.language")}</h3>
-        <div role="radiogroup" aria-label={t("common.language")} className="settings-language-options">
-          {supportedLocales.map((plugin) => {
-            const selected = locale === plugin.id;
-            return (
-              <button
-                key={plugin.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => setLocale(plugin.id as typeof locale)}
-                className="settings-language-option"
-              >
-                <span className="settings-language-radio">
-                  {selected && <span className="settings-language-radio-dot" />}
-                </span>
-                <span className="settings-language-label">{plugin.label}</span>
-                <span className="settings-language-code">{plugin.id}</span>
-              </button>
-            );
-          })}
-        </div>
       </section>
 
       {webAuthEnabled && (
@@ -631,6 +639,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           {logoutError && <p role="alert" className="settings-general-error">{logoutError}</p>}
         </section>
       )}
+      </div>
+      </div>
     </div>
   );
 }

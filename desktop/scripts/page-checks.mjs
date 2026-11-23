@@ -17,6 +17,7 @@ const PREVIEWS = [
     name: "task-home", port: 30245, fixture: "isolated-task-home-v1", server: "e2e/preview-task-home.mjs",
     checks: [
       "e2e/task-home.mjs",
+      "e2e/general-settings.mjs",
     ],
   },
 ];

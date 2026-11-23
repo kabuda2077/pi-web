@@ -57,6 +57,9 @@ const desktopMessages: Record<Locale, Record<string, string>> = {
     "newProject.openFailed": "Created {path}, but could not open it as a project.",
     "sidebar.projects": "Projects",
     "sidebar.newProject": "New project",
+    // General settings in two columns
+    "settings.workspaceGroup": "Workspace",
+    "settings.toolsNotifications": "Tools and notifications",
   },
   "zh-CN": {
     // The turn navigator
@@ -109,6 +112,9 @@ const desktopMessages: Record<Locale, Record<string, string>> = {
     "newProject.openFailed": "已创建 {path}，但未能打开该项目。",
     "sidebar.projects": "项目",
     "sidebar.newProject": "新建项目",
+    // General settings in two columns
+    "settings.workspaceGroup": "工作区",
+    "settings.toolsNotifications": "工具与通知",
   },
   "zh-TW": {
     // The turn navigator
@@ -161,6 +167,9 @@ const desktopMessages: Record<Locale, Record<string, string>> = {
     "newProject.openFailed": "已建立 {path}，但無法開啟這個專案。",
     "sidebar.projects": "專案",
     "sidebar.newProject": "新增專案",
+    // General settings in two columns
+    "settings.workspaceGroup": "工作區",
+    "settings.toolsNotifications": "工具與通知",
   },
 };
 

@@ -1,8 +1,6 @@
-// Settings shows these as swatches: System, the light row, the dark row, then a row of three:
-// the high-contrast pair and Zenburn.
+// Settings follows this visual and keyboard order: light, dark, then the four special choices.
 // The rows line up by hue: each light theme sits above its dark counterpart; Rose and Slate have none.
 export const THEME_OPTIONS = [
-  { id: "auto", label: "settings.themeSystem", scheme: null },
   { id: "light", label: "settings.themeLight", scheme: "light" },
   { id: "mist", label: "settings.themeMist", scheme: "light" },
   { id: "lilac", label: "settings.themeLilac", scheme: "light" },
@@ -13,6 +11,7 @@ export const THEME_OPTIONS = [
   { id: "dusk", label: "settings.themeDusk", scheme: "dark" },
   { id: "ember", label: "settings.themeEmber", scheme: "dark" },
   { id: "slate", label: "settings.themeSlate", scheme: "dark" },
+  { id: "auto", label: "settings.themeSystem", scheme: null },
   { id: "contrast-light", label: "settings.themeContrastLight", scheme: "light" },
   { id: "contrast-dark", label: "settings.themeContrastDark", scheme: "dark" },
   { id: "zenburn", label: "settings.themeZenburn", scheme: "dark" },
