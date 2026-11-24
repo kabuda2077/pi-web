@@ -1,5 +1,5 @@
 {
-  "piWeb": "0.17.0",
+  "piWeb": "0.18.0",
   "node": "v26.12.1",
   "failures": {
     "app/api/git/diff/route.test.mjs :: allows a Windows junction after its target is explicitly allowed": {
