@@ -663,8 +663,13 @@ async function probeGeneralChats(shell, win, check) {
   const sections = await run(`(() => {
     const entries = [".sidebar-tasks-entry", '[data-row-key="chats-header"]', '[data-row-key="projects-header"]'].map((selector) => document.querySelector(selector));
     if (entries.some((el) => !el)) return null;
+    // Top to bottom, from the Tasks entry: each row of the tree, and the gap above it.
+    const rows = [entries[0], ...document.querySelectorAll(".session-tree-row")].map((el) => ({ key: el.dataset.rowKey ?? "", box: el.getBoundingClientRect() })).sort((a, b) => a.box.top - b.box.top);
     return {
       tops: entries.map((el) => Math.round(el.getBoundingClientRect().top)),
+      heights: entries.map((el) => Math.round(el.getBoundingClientRect().height)),
+      gaps: rows.slice(1).map((row, index) => ({ key: row.key, gap: Math.round(row.box.top - rows[index].box.bottom) })),
+      gapAboveTasks: parseFloat(getComputedStyle(entries[0]).marginTop),
       lefts: entries.map((el) => Math.round(el.querySelector("span").getBoundingClientRect().left)),
       add: Boolean(entries[1].querySelector(".sidebar-section-add")),
       footer: Boolean(document.querySelector('[data-row-key="footer-open"]')),
@@ -673,6 +678,13 @@ async function probeGeneralChats(shell, win, check) {
   check("the sidebar lists Tasks, General and Projects, in that order", sections && sections.tops[0] < sections.tops[1] && sections.tops[1] < sections.tops[2], sections ?? await describeWindow(shell));
   if (!sections) return;
   check("the three entries' labels start on one line", new Set(sections.lefts).size === 1, sections.lefts);
+  // The gap above the Tasks entry parts the three entries; what Projects lists sits a step closer, below it and to one another.
+  const entryGaps = sections.gaps.filter(({ key }) => key === "chats-header" || key === "projects-header").map(({ gap }) => gap);
+  const projectGaps = new Set(sections.gaps.filter(({ key, gap }) => gap !== 0 && /^(group|pinned-header)/.test(key)).map(({ gap }) => gap));
+  check("the entries are rows of one height and one gap apart, and the projects sit closer",
+    new Set(sections.heights).size === 1 && entryGaps.length === 2 && entryGaps.every((gap) => gap === sections.gapAboveTasks)
+      && projectGaps.size === 1 && [...projectGaps][0] < sections.gapAboveTasks,
+    { heights: sections.heights, gaps: sections.gaps, gapAboveTasks: sections.gapAboveTasks });
   check("General has a +, and pi-web's Open another project row is gone", sections.add && !sections.footer, sections);
 
   // A General chat: a fresh composer in a folder of its own, which the page reserved ahead.

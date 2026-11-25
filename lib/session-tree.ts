@@ -464,7 +464,7 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   }
 
   // A spacer keeps the first section's header off the toolbar's line (#1338).
-  const rows: SidebarRow[] = [input.chats ? { kind: "spacer", key: "top-spacer", height: 2 } : { kind: "spacer", key: "top-spacer" }];
+  const rows: SidebarRow[] = [{ kind: "spacer", key: "top-spacer" }];
 
   if (input.chats) {
     rows.push({ kind: "chats-header", key: "chats-header", collapsed: input.chats.collapsed });
@@ -475,9 +475,9 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
       const more = moreRowState(chatFamilies.length, visible.length, revealed);
       if (more) rows.push({ kind: "chats-more", key: "chats-more", ...more, nextShown });
     }
-    const hasChatRows = rows[rows.length - 1].kind !== "chats-header";
-    rows.push({ kind: "spacer", key: "chats-spacer", height: hasChatRows ? 6 : 2 });
+    rows.push({ kind: "spacer", key: "chats-spacer" });
     rows.push({ kind: "projects-header", key: "projects-header", collapsed: !!input.projectsCollapsed });
+    rows.push({ kind: "spacer", key: "projects-spacer" });
   }
 
   // Pinned section: newest pin first; ties keep family activity order.
@@ -728,7 +728,7 @@ export function getRowOffsets(rows: readonly SidebarRow[], layout: SidebarLayout
   const offsets = new Array<number>(rows.length + 1);
   offsets[0] = 0;
   for (let index = 0; index < rows.length; index++) {
-    offsets[index + 1] = offsets[index] + (sectionRowHeight(rows[index], layout) ?? heights[rows[index].kind as SidebarRowKind]);
+    offsets[index + 1] = offsets[index] + (sectionRowHeight(rows, index, layout) ?? heights[rows[index].kind as SidebarRowKind]);
   }
   return offsets;
 }

@@ -18,16 +18,28 @@ export type SectionRow =
   | { kind: "chat-draft"; key: "chat-draft" }
   | { kind: "chats-more"; key: "chats-more"; hidden: number; canShowLess: boolean; nextShown: number }
   | { kind: "projects-header"; key: "projects-header"; collapsed: boolean }
-  /** A gap of its own height: the three entries sit closer than pi-web's 8px. */
-  | { kind: "spacer"; key: "top-spacer" | "chats-spacer"; height: number };
+  /** A gap after the General section, and one between the Projects header and what it lists. */
+  | { kind: "spacer"; key: "chats-spacer" | "projects-spacer" };
 
 export type SectionRowKind = Exclude<SectionRow["kind"], "spacer">;
 
-/** A section header is 30px, as the Tasks entry above the tree; its rows follow pi-web's rhythm. */
+/** A section header is a row of a project's height, as the Tasks entry above the tree is. */
 export const SECTION_ROW_HEIGHTS: Record<SidebarLayout, Record<SectionRowKind, number>> = {
-  desktop: { "chats-header": 30, "projects-header": 30, "chat-draft": 28, "chats-more": 26 },
+  desktop: { "chats-header": 28, "projects-header": 28, "chat-draft": 28, "chats-more": 26 },
   mobile: { "chats-header": 44, "projects-header": 44, "chat-draft": 44, "chats-more": 36 },
 };
+
+/**
+ * The gaps of a tree that has the sections, where pi-web has 8px everywhere.
+ * Tasks, General and Projects are entries of one kind: SECTION_GAP parts
+ * them, and the Tasks entry has the same above it (app/desktop.css). The
+ * projects are what Projects lists: PROJECT_GAP, a step closer, below its
+ * header and between two of them, so the list reads as the header's.
+ */
+export const SECTION_GAP = 6;
+export const PROJECT_GAP = 4;
+/** The spacers between the entries, and the one that parts the projects from the footer. */
+const SECTION_SPACERS: ReadonlySet<string> = new Set(["top-spacer", "chats-spacer", "footer-spacer"]);
 
 /** `moreShown` entry for the General section's "show more". */
 export const CHATS_MORE_KEY = "chats";
@@ -44,9 +56,15 @@ export function chatSection(label: string): SidebarProject {
   return { key: CHATS_SECTION_KEY, name: label, root: "", current: false, pinned: false, customName: null };
 }
 
-/** The height of a row of the sections; undefined for a row of pi-web's own. */
-export function sectionRowHeight(row: SidebarRow, layout: SidebarLayout): number | undefined {
-  if (row.kind === "spacer") return "height" in row ? row.height : undefined;
+/** The tree has the sections when General's header opens it, right below pi-web's top spacer. */
+function hasSections(rows: readonly SidebarRow[]): boolean {
+  return rows[1]?.kind === "chats-header";
+}
+
+/** The height of rows[index] where the sections decide it; undefined for a row that keeps pi-web's. */
+export function sectionRowHeight(rows: readonly SidebarRow[], index: number, layout: SidebarLayout): number | undefined {
+  const row = rows[index];
+  if (row.kind === "spacer") return hasSections(rows) ? (SECTION_SPACERS.has(row.key) ? SECTION_GAP : PROJECT_GAP) : undefined;
   const heights: Partial<Record<SidebarRow["kind"], number>> = SECTION_ROW_HEIGHTS[layout];
   return heights[row.kind];
 }
