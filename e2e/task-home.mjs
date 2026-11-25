@@ -216,17 +216,31 @@ try {
   assert.equal(await reservedFolder(5), unsent); await section("projects").getByRole("button", { name: "项目", exact: true }).waitFor();
   await tasks.click();
   const gap = async (above,below) => {const a = await above.boundingBox(), b = await below.boundingBox(); return Math.round(b.y - a.y - a.height);};
+  // The sizes of the gaps between blocks down the column, from the Tasks entry to the last row. Rows of one block have none.
+  const columnGaps = () => page.evaluate(() => {
+    const boxes = [document.querySelector(".sidebar-tasks-entry"), ...document.querySelectorAll(".session-tree-row")].map(el => el.getBoundingClientRect()).sort((a, b) => a.top - b.top);
+    return [...new Set(boxes.slice(1).map((box, index) => Math.round(box.top - boxes[index].bottom)).filter(Boolean))].sort((a, b) => a - b);
+  });
   const chats = section("chats"), projects = section("projects");
-  assert.equal(await gap(tasks, chats), 2);
+  const projectRows = groups.locator('[data-row-key^="group:"]');
+  const firstProject = projectRows.first();
+  assert.ok(await projectRows.count() > 1);
+  assert.equal(await gap(tasks, chats), 6);
+  assert.equal(await tasks.evaluate(el => parseFloat(getComputedStyle(el).marginTop)), 6);
+  assert.equal(await gap(chats, groups.locator('[data-row-key^="session:chat:"]').first()), 0);
   assert.equal(await gap(groups.locator('[data-row-key^="session:chat:"]').last(), projects), 6);
+  assert.equal(await gap(projects, firstProject), 4);
+  assert.deepEqual(await columnGaps(), [4, 6]);
   await chats.getByRole("button", { name: "通用", exact: true }).click();
   assert.equal((await projects.locator('.sidebar-section-toggle svg').boundingBox()).width, 16);
   assert.equal(await labelX(chats), await labelX(projects));
-  assert.equal(await gap(chats, projects), 2);
+  assert.equal(await gap(chats, projects), 6);
+  for (const row of [tasks, chats, projects, firstProject]) assert.equal((await row.boundingBox()).height, 28);
+  assert.deepEqual(await columnGaps(), [4, 6]);
   await projects.getByRole("button", { name: "项目", exact: true }).click();
   await page.mouse.move(800,100);
   await page.locator(".session-sidebar").screenshot({ path: `${results}/sidebar-compact-zh.png` });
-  pass("Section spacing is 2px between peer headers and 6px after a populated chat list");
+  pass("Tasks, General, Projects and the projects are rows of one height; the entries are 6px apart, the projects 4px below Projects and apart");
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(unexpected, []);
   pass("No uncaught page errors, failed API responses, or outside browser requests");
 } catch (err) { failed = String(err?.stack ?? err); await screenshot("failure").catch(() => {}); throw err; }
