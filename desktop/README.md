@@ -39,7 +39,7 @@ The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
 - The sidebar has three entries of one kind: Tasks, General and Projects.
   - **Tasks** is a page of every session that waits for an answer, runs, or changed lately, across projects.
   - **General** holds chats that belong to no project. Each gets a folder of its own and is an ordinary pi session there, with the tools and permissions of one in a project.
-  - **Projects** holds pi-web's project groups. Its + opens pi-web's directory picker. Browse to an existing folder or use **New directory**, then click **Select this folder** to add the project and open a new conversation there. The project stays in the sidebar even if you leave before sending a message.
+  - **Projects** holds pi-web's project groups. **Sort by date** switches those sessions to date sections and keeps General in its own section. **Projects +** opens pi-web's directory picker. Browse to an existing folder or use **New directory**, then click **Select this folder** to add and show the project and open a new conversation there. The project stays in the sidebar even if you leave before sending a message.
 - Settings › Models: adding the models a provider lists fills in what models.dev knows about each, and a provider can have a default context window for the models added to it.
 - Settings › General is laid out in two columns in a wide window, and keeps its rows in place while the tool settings load.
 
@@ -266,18 +266,41 @@ in a folder (models, tools, attachments, the first send) is pi-web's own code, u
 
 ## Following upstream
 
-```bash
-git fetch upstream --tags
-git diff --stat v<old> v<new> -- $(git diff --name-only v<old> desktop -- . ':!desktop')   # what the release changed in files this fork touches
-git rebase --onto v<new> v<old> desktop
-cd desktop && npm run dist && npm run verify
+Choose the upstream release tag when you are ready to follow it. This PowerShell example
+starts from a desktop branch based on `v0.18.0` and follows `v0.19.0` in a separate checkout.
+
+```powershell
+$old = "v0.18.0"
+$new = "v0.19.0"
+git fetch upstream tag $new
+$paths = @(git diff --name-only $old desktop -- . ':!desktop')
+git diff --stat $old $new -- @paths
+git worktree add -b "follow/$new" "../pi-web-follow-$new" desktop
+Set-Location "../pi-web-follow-$new"
+git rebase --onto $new $old
+```
+
+The diff shows which upstream files the two branches both changed. The rebase starts at
+the entire new release and replays the desktop commits after the old release. Resolve
+each conflict, stage the files and run `git rebase --continue`. Review the table above for
+behavior changes even in files Git merged automatically. Check that the new tag is an
+ancestor with `git merge-base --is-ancestor $new HEAD` and compare the desktop commits
+before and after with `git range-diff "$old..desktop" "$new..HEAD"`.
+
+In the follow worktree, run the following stages in order. Update the Windows test
+baseline only after reproducing any new failure on the unmodified upstream tag in the
+same environment. Keep the pre-rebase `desktop` tip available until the follow branch
+is tested and ready to take its place.
+
+```powershell
+npm ci
+Set-Location desktop
+npm ci
+npm run dist
+npm run verify
 npm run test:pages
 npm run test:upstream
 ```
-
-The second line names the files to look at first: a file it lists was changed on both sides,
-and a rebase that reports no conflict there can still have moved the code a change relies on
-(the table's last column). The checks above find that.
 
 The shell reads nothing version-specific from pi-web beyond what its own launcher and
 HTTP API offer, so a new release needs no change here unless one of these changes upstream:

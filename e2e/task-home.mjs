@@ -100,6 +100,17 @@ try {
   assert.equal(await groups.locator('[data-row-key="group:/fixture/projects/Atlas"]').count(), 0);
   pass("Peer section labels align; add buttons appear on hover without moving text, and the old footer is gone");
 
+  const sortByDate = page.locator(".sidebar-list-mode-toggle");
+  await sortByDate.click();
+  assert.equal(await sortByDate.getAttribute("aria-pressed"), "true");
+  const recentProject = groups.locator('[data-row-key="session:recent:project-history"]');
+  await recentProject.waitFor();
+  assert.equal(await groups.locator('[data-row-key="session:chat:temp-history"]').count(), 1);
+  assert.equal(await groups.locator('[data-row-key="session:recent:temp-history"]').count(), 0);
+  await sortByDate.click();
+  await groups.locator('[data-row-key="group:/fixture/projects/Atlas"]').waitFor();
+  pass("Sort by date opens the Projects section, keeps General separate and switches back to the project groups");
+
   await taskPage.getByRole("button", { name: /Atlas design review/ }).click();
   await page.waitForURL(url => url.searchParams.get("session") === "project-history");
   await input.waitFor(); assert.deepEqual(requests, []);
@@ -187,6 +198,8 @@ try {
     if (width === 1600) await page.locator('.new-session-hero').locator('..').screenshot({ path: `${results}/composer-alignment.png` });
   }
   pass("Brand, project icon and input border share one left edge on wide and narrow windows");
+  await sortByDate.click();
+  assert.equal(await sortByDate.getAttribute("aria-pressed"), "true");
   await section("projects").hover(); await btn("Add project").click();
   await directoryPicker.getByLabel("Directory path", { exact: true }).fill("/fixture/projects");
   await directoryPicker.getByRole("button", { name: "Go", exact: true }).click();
@@ -194,6 +207,7 @@ try {
   await directoryPicker.getByRole("button", { name: "Select this folder", exact: true }).click();
   const reference = groups.locator('[data-row-key="group:/fixture/projects/Reference"]');
   await reference.waitFor();
+  assert.equal(await sortByDate.getAttribute("aria-pressed"), "false");
   await newChat(); await page.locator('[data-row-key="chat-draft"]').waitFor();
   await notebook.waitFor(); await reference.waitFor();
   const leftUnused = await reservedFolder(2);

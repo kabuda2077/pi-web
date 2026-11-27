@@ -196,7 +196,7 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
 
       return (
         <MarkdownLinkContext.Provider value={true}>
-          <a href={href} {...props} onClick={handleClick} onContextMenu={(event) => showFileLinkMenu(event, filePath, () => openFile(filePath, parsePdfPageFragment(href) ?? undefined))}>
+          <a href={href} {...props} onClick={handleClick} onContextMenu={(event) => showFileLinkMenu(event, fileLink.path, () => openFile(fileLink.path, fileLink.target))}>
             {children}
           </a>
         </MarkdownLinkContext.Provider>

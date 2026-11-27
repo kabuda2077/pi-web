@@ -1,10 +1,14 @@
 {
-  "piWeb": "0.18.0",
+  "piWeb": "0.19.0",
   "node": "v26.12.1",
   "failures": {
     "app/api/git/diff/route.test.mjs :: allows a Windows junction after its target is explicitly allowed": {
       "count": 1,
       "why": "unclear: a Windows-only test; the diff of a file reached through a junction answers unsupported. May be an upstream defect"
+    },
+    "app/api/git/diff/route.test.mjs :: a tracked file turned into a link is not shown as its target's diff": {
+      "count": 1,
+      "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
     },
     "app/api/mcp/route-add.test.mjs :: a fresh folder with a link to nothing under .pi is not offered the step, and the step refuses it": {
       "count": 1,
@@ -21,6 +25,10 @@
     "app/api/skills/content/route.test.mjs :: app\\api\\skills\\content\\route.test.mjs": {
       "count": 1,
       "why": "symlink: this machine may not create symbolic links (Windows without Developer Mode)"
+    },
+    "hooks/useSkipOffscreenRows.test.mjs :: a font change, and a font that finished loading, re-measure every skipped row the same way": {
+      "count": 1,
+      "why": "reproduces on the unmodified v0.19.0 tag with Node v26.12.1: the font-weight change leaves contentVisibility at auto"
     },
     "lib/codemode-settings.test.mjs :: writing Code mode keeps other settings and leaves an unchanged file alone": {
       "count": 1,
@@ -41,10 +49,6 @@
     "lib/extension-ui-theme.test.mjs :: lib\\extension-ui-theme.test.mjs": {
       "count": 1,
       "why": "posix: the test imports a module by its absolute path, which on Windows is no URL (D:\\...)"
-    },
-    "lib/http-dispatcher.test.mjs :: resolves PI_CODING_AGENT_DIR as pi's getAgentDir() does": {
-      "count": 1,
-      "why": "posix: the test's values include file:///tmp/agent, no absolute file URL on Windows"
     },
     "lib/mcp-config-read.test.mjs :: a project file is read only where its real path is allowed": {
       "count": 1,

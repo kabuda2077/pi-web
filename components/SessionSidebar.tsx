@@ -1480,6 +1480,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
       if (purpose === "add-project") {
         folderReturnFocusRef.current = null;
         setProjectsCollapsed(false);
+        setListMode("projects");
+        saveListMode("projects");
         startNewSessionIn({ cwd: data.cwd, projectKey: data.projectKey, projectRoot: data.projectRoot });
         return;
       }
@@ -2680,9 +2682,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
       switchTab("sessions");
       if (archiveView) setArchiveView(false);
     }
+    setProjectsCollapsed(false);
     setListMode(next);
     saveListMode(next);
-    openRevealRef.current = selectedSessionId;
+    openRevealRef.current = visibleSelectedId;
   };
   const handleToggleRecentSection = (section: RecentSection) => {
     const next = recentCollapsed.includes(section)

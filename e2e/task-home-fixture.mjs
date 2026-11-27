@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { applySessionUiStateRequest } from "../lib/session-ui-state-shared.ts";
+import { DEFAULT_NOTICE_SETTINGS } from "../lib/transcript-notices.ts";
 const project = "/fixture/projects/Atlas";
 const tempRoot = "/fixture/agent/temp-chats";
 const model = { provider: "fixture", modelId: "local-model" };
@@ -91,7 +92,9 @@ export async function fixtureApi(req, res, u, st) {
     if (p === "/api/open-in-explorer") return send({ available: false });
     if (p === "/api/app-update") return send({ current: "0.17.0", latest: "0.17.0" });
     if (p === "/api/web-auth") return send({ enabled: false });
-    if (p === "/api/cache-miss-notices" && req.method === "GET") return send({ enabled: false });
+    if (p === "/api/notices" && req.method === "GET") return send({ notices: DEFAULT_NOTICE_SETTINGS });
+    if (p === "/api/queue-modes" && req.method === "GET") return send({ steeringMode: "one-at-a-time", followUpMode: "one-at-a-time" });
+    if (p === "/api/http-proxy" && req.method === "GET") return send({ enabled: false, displayAddress: null, sources: {} });
     if (p === "/api/tools/settings" && req.method === "GET") return send({ isWindows: true, powerShellEnabled: true, builtinTools: ["read", "bash", "edit", "write"] });
     if (p === "/api/file-index") return send({ files: [] });
     return send({ error: `Not available in task fixture: ${p}` }, 404);

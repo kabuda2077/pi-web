@@ -739,21 +739,25 @@ async function probeNewProject(shell, win, workDir, check) {
 
   const folder = path.join(workDir, "opened with projects plus");
   fs.mkdirSync(folder, { recursive: true });
+  const selectedFolder = fs.realpathSync(folder);
   await run(`document.querySelector(${JSON.stringify(add)}).click()`);
   const select = ".directory-picker-footer button:last-child";
-  const ready = await waitFor(() => run(`Boolean(document.querySelector(".directory-picker-path") && document.querySelector(${JSON.stringify(select)})?.matches(":enabled"))`), 5000);
-  check("the directory picker is ready to select a folder", ready);
-  if (!ready) return;
-  await run(`(() => {
+  const hasPathInput = await waitFor(() => run(`Boolean(document.querySelector(".directory-picker-path"))`), 5000);
+  check("the directory picker is ready to enter a path", hasPathInput);
+  if (!hasPathInput) return;
+  const entered = await waitFor(() => run(`(() => {
     const input = document.querySelector(".directory-picker-path");
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(folder)});
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(selectedFolder)});
     input.dispatchEvent(new Event("input", { bubbles: true }));
-  })()`);
+    return document.querySelector(${JSON.stringify(select)})?.matches(":enabled");
+  })()`), 10000);
+  check("the typed folder can be selected", entered);
+  if (!entered) return;
   await run(`document.querySelector(${JSON.stringify(select)}).click()`);
   const listed = await waitFor(() => run(`(async () => {
     if (document.querySelector(${JSON.stringify(dialog)})) return false;
     const { state } = await (await fetch("/api/sessions/ui-state")).json();
-    const entry = Object.entries(state?.createdProjects ?? {}).find(([, root]) => root === ${JSON.stringify(folder)});
+    const entry = Object.entries(state?.createdProjects ?? {}).find(([, root]) => root === ${JSON.stringify(selectedFolder)});
     return Boolean(entry && [...document.querySelectorAll("[data-row-key]")].some(row => row.dataset.rowKey === "group:" + entry[0]));
   })()`), 20_000);
   check("the selected folder stays listed as a project before it has a session", listed, listed ? undefined : await describeWindow(shell));
