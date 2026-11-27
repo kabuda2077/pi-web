@@ -159,6 +159,21 @@ Before the packaged server starts, the shell checks the Next.js build ID against
 cache and clears cache entries left by an older installation. Reopening the same build
 keeps its cache and the app's profile stays in place.
 
+### Desktop release versioning
+
+Assign a new Pi Web Desktop version before building each official installer. The desktop
+version follows `MAJOR.MINOR.PATCH` and is maintained independently of the bundled Pi Web version.
+
+| Release contents | Version change | Example |
+| --- | --- | --- |
+| Includes a new upstream Pi Web release, with or without desktop changes | Increment `MINOR` and reset `PATCH` to `0` | `0.1.0` → `0.2.0`, `0.2.3` → `0.3.0` |
+| Includes only desktop changes, such as feature additions, removals, UI adjustments, or fixes | Increment `PATCH` | `0.2.0` → `0.2.1` |
+
+Run `npm version minor --no-git-tag-version` or `npm version patch --no-git-tag-version`
+from `desktop/` before `npm run dist`. This updates `desktop/package.json` and
+`desktop/package-lock.json` together. The installer filename takes its version from
+`desktop/package.json`. Local verification builds reuse the current desktop version.
+
 ## Changes to pi-web
 
 Every change the app makes to pi-web. The aim is that a new pi-web release merges with as
@@ -284,16 +299,26 @@ git rebase --onto $new $old
 ```
 
 The diff shows which upstream files the two branches both changed. The rebase starts at
-the entire new release and replays the desktop commits after the old release. Resolve
-each conflict, stage the files and run `git rebase --continue`. Review the table above for
-behavior changes even in files Git merged automatically. Check that the new tag is an
+the entire new release and replays the desktop commits after the old release. Review the
+table above for behavior changes even in files Git merged automatically.
+
+Resolve conflicts directly when both sides' intended behavior can be preserved. Pause the
+affected work if a resolution changes a feature, default, user workflow, or the handling
+of existing data or settings.
+
+Explain the affected workflow, what each side does, the options and their consequences,
+and your recommendation with its rationale. Wait for the maintainer's decision before
+applying a resolution. Continue independent work where possible.
+
+Stage each resolved conflict and run `git rebase --continue`. Check that the new tag is an
 ancestor with `git merge-base --is-ancestor $new HEAD` and compare the desktop commits
 before and after with `git range-diff "$old..desktop" "$new..HEAD"`.
 
-In the follow worktree, run the following stages in order. Update the Windows test
-baseline only after reproducing any new failure on the unmodified upstream tag in the
-same environment. Keep the pre-rebase `desktop` tip available until the follow branch
-is tested and ready to take its place.
+In the follow worktree, run the following stages in order. For an official installer,
+apply the minor bump from [Desktop release versioning](#desktop-release-versioning) before
+`npm run dist`. Update the Windows test baseline only after reproducing any new failure
+on the unmodified upstream tag in the same environment. Keep the pre-rebase `desktop`
+tip available until the follow branch is tested and ready to take its place.
 
 ```powershell
 npm ci
