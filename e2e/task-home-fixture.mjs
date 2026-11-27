@@ -11,7 +11,7 @@ function record(id, cwd, name) {
 export function makeSpace() {
   return { sessions: [record("project-history", project, "Atlas design review"), record("temp-history", `${tempRoot}/history`, "Quick note"),
     record("waiting-task", project, "Review navigation draft"), record("running-task", project, "Check project files")],
-    projects: new Set([project]), allocated: [`${tempRoot}/history`], held: new Map(), live: new Set(), streams: new Map(), ui: { version: 1, revision: 0, projects: {}, sessions: {} } };
+    projects: new Set([project, "/fixture/projects/Reference"]), allocated: [`${tempRoot}/history`], held: new Map(), live: new Set(), streams: new Map(), ui: { version: 1, revision: 0, projects: {}, sessions: {} } };
 }
 function context(s) { return { messages: [{ role: "user", content: s.firstMessage }], entryIds: ["fixture-entry"], oldestEntryId: "fixture-entry", hasMore: false, turnsBefore: 0, model, thinkingLevel: "off" }; }
 async function readBody(req) { const chunks = []; for await (const chunk of req) chunks.push(chunk); return chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {}; }
@@ -76,7 +76,12 @@ export async function fixtureApi(req, res, u, st) {
       st.projects.add(path);
       return send({ success: true, path });
     }
-    if (p === "/api/cwd/browse") return send({ path: u.searchParams.get("path") || "/fixture/projects", directories: [], parentPath: null });
+    if (p === "/api/cwd/browse") {
+      const path = u.searchParams.get("path") || "/fixture/projects";
+      const directories = [...st.projects].filter(dir => dir.slice(0, dir.lastIndexOf("/")) === path)
+        .map(dir => ({ path: dir, name: dir.slice(dir.lastIndexOf("/") + 1) }));
+      return send({ path, directories, parentPath: path.slice(0, path.lastIndexOf("/")) || null });
+    }
     if (p === "/api/project-trust") return send({ trusted: true, hasMcpConfig: false });
     if (p.startsWith("/api/files/")) return send({ files: [], entries: [] });
     if (p === "/api/git/status") return send({ files: [], isGitRepo: false });

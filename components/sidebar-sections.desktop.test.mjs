@@ -53,7 +53,7 @@ test("the header's button starts a conversation anywhere once General chats are 
 });
 
 test("each section has a label toggle and a separate named add button even when folded", () => {
-  for (const [key, label, action] of [["chats-header", "General", "New chat"], ["projects-header", "Projects", "New project"]]) {
+  for (const [key, label, action] of [["chats-header", "General", "New chat"], ["projects-header", "Projects", "Add project"]]) {
     for (const collapsed of [true, false]) {
       for (const [layout, height] of [["desktop", 28], ["mobile", 44]]) {
         const row = rowMarkup(renderTree({ layout, rows: [{ kind: key, key, collapsed }] }), key);

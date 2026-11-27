@@ -10,7 +10,7 @@ export interface SectionRowHandlers {
   onToggleChats?(): void;
   onNewChat?(): void;
   onToggleProjects?(): void;
-  onNewProject?(): void;
+  onNewProject?(opener: HTMLButtonElement): void;
 }
 
 type Row = Extract<SectionRow, { kind: "chats-header" | "projects-header" | "chat-draft" }>;
@@ -31,7 +31,7 @@ export function SidebarSectionRow({ row, style, handlers }: { row: Row; style: C
   }
   const isChat = row.kind === "chats-header";
   const Icon = isChat ? MessageIcon : FolderIcon;
-  const addLabel = t(isChat ? "sidebar.newTempChat" : "sidebar.newProject");
+  const addLabel = t(isChat ? "sidebar.newTempChat" : "sidebar.addProject");
   return (
     <div className="session-tree-row sidebar-section-entry" style={style} data-row-key={row.key}>
       <button type="button" className="sidebar-section-toggle" aria-expanded={!row.collapsed} onClick={() => isChat ? handlers.current.onToggleChats?.() : handlers.current.onToggleProjects?.()}>
@@ -39,7 +39,7 @@ export function SidebarSectionRow({ row, style, handlers }: { row: Row; style: C
         <span>{t(isChat ? "sidebar.chats" : "sidebar.projects")}</span>
       </button>
       {(isChat ? handlers.current.onNewChat : handlers.current.onNewProject) && (
-        <button type="button" className="sidebar-section-add" title={addLabel} aria-label={addLabel} onClick={() => isChat ? handlers.current.onNewChat?.() : handlers.current.onNewProject?.()}>
+        <button type="button" className="sidebar-section-add" title={addLabel} aria-label={addLabel} onClick={(event) => isChat ? handlers.current.onNewChat?.() : handlers.current.onNewProject?.(event.currentTarget)}>
           <PlusIcon size={14} />
         </button>
       )}

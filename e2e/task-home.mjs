@@ -91,8 +91,11 @@ try {
   await section("projects").locator(".sidebar-section-toggle").focus();
   await page.keyboard.press("Tab");
   assert.equal(await section("projects").locator(".sidebar-section-add").evaluate(el => el === document.activeElement && getComputedStyle(el).opacity === "1"), true);
-  await page.keyboard.press("Enter"); await page.getByLabel("Project name", { exact: true }).waitFor();
-  await page.keyboard.press("Escape"); await page.getByLabel("Project name", { exact: true }).waitFor({ state: "hidden" });
+  await section("projects").getByRole("button", { name: "Add project", exact: true }).press("Enter");
+  await page.getByRole("dialog", { name: "Select directory", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "Select directory", exact: true }).waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Add project");
   await section("projects").getByRole("button", { name: "Projects", exact: true }).click();
   assert.equal(await groups.locator('[data-row-key="group:/fixture/projects/Atlas"]').count(), 0);
   pass("Peer section labels align; add buttons appear on hover without moving text, and the old footer is gone");
@@ -158,13 +161,18 @@ try {
   assert.equal(projectPrompt.postDataJSON().message, "Normal project fixture");
   assert.equal(await reservedFolder(2), next);
   pass("The normal project flow still uses the original project cwd and reserves no chat folder");
-  await section("projects").hover(); await btn("New project").click();
-  await page.getByLabel("Project name", { exact: true }).fill("Notebook");
-  await page.locator("#new-project-parent").click(); await btn("Select this folder").click();
+  await section("projects").hover(); await btn("Add project").click();
+  const directoryPicker = page.getByRole("dialog", { name: "Select directory", exact: true });
+  await directoryPicker.getByRole("button", { name: "New directory", exact: true }).click();
+  const createDirectory = page.getByRole("dialog", { name: "Create directory", exact: true });
+  await createDirectory.getByLabel("Directory name", { exact: true }).fill("Notebook");
   const mkdir = page.waitForResponse(r => r.request().method() === "POST" && r.url() === `${origin}/api/cwd/browse`);
-  await btn("Create project").click();
+  await createDirectory.getByRole("button", { name: "Create", exact: true }).click();
   const created = await (await mkdir).json(); assert.ok(created.success);
   const notebook = groups.locator(`[data-row-key="group:${created.path}"]`);
+  await page.waitForFunction(path => document.querySelector("#directory-path")?.value === path, created.path);
+  assert.equal(await notebook.count(), 0);
+  await directoryPicker.getByRole("button", { name: "Select this folder", exact: true }).click();
   await notebook.waitFor();
   for (const width of [1600, 980, 375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
@@ -179,10 +187,17 @@ try {
     if (width === 1600) await page.locator('.new-session-hero').locator('..').screenshot({ path: `${results}/composer-alignment.png` });
   }
   pass("Brand, project icon and input border share one left edge on wide and narrow windows");
+  await section("projects").hover(); await btn("Add project").click();
+  await directoryPicker.getByLabel("Directory path", { exact: true }).fill("/fixture/projects");
+  await directoryPicker.getByRole("button", { name: "Go", exact: true }).click();
+  await directoryPicker.getByRole("button", { name: "Reference", exact: true }).click();
+  await directoryPicker.getByRole("button", { name: "Select this folder", exact: true }).click();
+  const reference = groups.locator('[data-row-key="group:/fixture/projects/Reference"]');
+  await reference.waitFor();
   await newChat(); await page.locator('[data-row-key="chat-draft"]').waitFor();
-  await notebook.waitFor();
+  await notebook.waitFor(); await reference.waitFor();
   const leftUnused = await reservedFolder(2);
-  pass("Projects + creates a named project that survives leaving its empty composer");
+  pass("Projects + reuses the directory picker; new and existing folders stay listed after leaving their empty composers");
   const headerNew = page.locator(".sidebar-new-button");
   assert.equal(await headerNew.innerText(), "New conversation");
   const openTask = async (title, sessionId) => {

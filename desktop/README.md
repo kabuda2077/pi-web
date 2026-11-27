@@ -39,7 +39,7 @@ The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
 - The sidebar has three entries of one kind: Tasks, General and Projects.
   - **Tasks** is a page of every session that waits for an answer, runs, or changed lately, across projects.
   - **General** holds chats that belong to no project. Each gets a folder of its own and is an ordinary pi session there, with the tools and permissions of one in a project.
-  - **Projects** holds pi-web's project groups; its + makes a new named folder and opens it.
+  - **Projects** holds pi-web's project groups. Its + opens pi-web's directory picker. Browse to an existing folder or use **New directory**, then click **Select this folder** to add the project and open a new conversation there. The project stays in the sidebar even if you leave before sending a message.
 - Settings › Models: adding the models a provider lists fills in what models.dev knows about each, and a provider can have a default context window for the models added to it.
 - Settings › General is laid out in two columns in a wide window, and keeps its rows in place while the tool settings load.
 
@@ -51,7 +51,7 @@ The pages (each is a row under [Changes to pi-web](#changes-to-pi-web)):
 | A provider's default for imported models (Settings › Models) | `~/.pi/agent/pi-web-model-import.json` |
 | The General chats' folders | `~/Chats/chat-<id>`, one a chat; another place can be chosen in Settings › General, for the chats started from then on |
 | Which folders are General chats | `~/.pi/agent/pi-web-temp-chats.json` |
-| The projects made with Projects + | `createdProjects` in pi-web's own `~/.pi/agent/pi-web-session-state.json` |
+| The projects added with Projects + | `createdProjects` in pi-web's own `~/.pi/agent/pi-web-session-state.json` |
 | Window state, page storage (theme, drafts), logs | `%APPDATA%\pi-web-desktop` |
 
 Uninstalling removes none of it. With `PI_CODING_AGENT_DIR` set, the General chats' folders are
@@ -98,7 +98,7 @@ off screen and on a throwaway profile and agent directory, three times:
   - the sidebar's three entries and the tasks page
   - a General chat's composer in the folder reserved for it: pi-web's model list must serve
     that folder, or the composer shows "Access denied"
-  - Projects +, and a folder made there staying listed
+  - Projects + opening the directory picker, and a selected folder staying listed
   - General settings in two columns, with the tool switches loaded
 - *server-fails*: a server that cannot start is reported, with Retry.
 - *app is killed*: killing the app leaves no server behind, and the next launch clears the run
@@ -137,7 +137,7 @@ components over a mock API (`e2e/preview-*.mjs`): the flows a self-test cannot d
 model. A preview already serving its port is used as it is.
 
 - `e2e/model-import.mjs` (port 30243): a model import, with a catalog lookup that fails and one that answers late
-- `e2e/task-home.mjs` (port 30245): the tasks page, a General chat from its + to its first send, Projects +, and archive navigation and focus
+- `e2e/task-home.mjs` (port 30245): the tasks page, a General chat from its + to its first send, adding new and existing folders with Projects +, and archive navigation and focus
 - `e2e/general-settings.mjs` (the same preview): Settings › General at five widths, with a slow and a failing tool-settings request
 
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
@@ -203,7 +203,7 @@ code a change depends on without Git noticing.
 | Model import: adding discovered models fills in their catalog details; a default context window for a provider's imported models, with Apply to all | `lib/model-import.ts`, `lib/model-import-defaults.ts`, `app/api/models-config/import-defaults/route.ts` | `components/ModelsConfig.tsx`: the field, `addDiscoveredModels()` and the import status, and the draft's defaults merged in on load and split off on save; `app/api/models-config/catalog/route.ts`: `POST`, a batch lookup | changes discovery fields, `fillEmptyModelFields()` or exact catalog matching, or loads and saves the editor's draft somewhere else |
 | Tasks page | `components/TasksPage.tsx`, `components/TasksPage.module.css`, `lib/task-groups.ts` | `components/AppShell.tsx`: the page over the chat, which stays mounted; `components/SessionSidebar.tsx`: the entry and its count, the two status sets reported to the shell, and no row selected while the page shows; `hooks/useKeyboardShortcuts.ts`: `suspendGlobalAbort()`, so Esc stops no run from the page; `components/SidebarIcons.tsx`: one icon | stops polling `awaitingInputSessionIds` or `subagentsActiveSessionIds`, or keeps the global Esc somewhere else |
 | General chats, in a General section above Projects | `lib/temp-chats.ts`, `lib/temp-chat-path.ts`, `app/api/temp-chats/route.ts`, `hooks/useTempChatDirectories.ts`, `components/TempChatSettings.tsx`, `lib/sidebar-sections.ts`, `components/SidebarSectionRows.tsx` | `components/AppShell.tsx`: `showTempChat()` and `openTempChat()`, and the chat's folder as its composer's `newSessionCwd`; `lib/session-tree.ts`: the sections' rows when given `chats`, and a chat's folder kept out of the project groups; `components/SessionTree.tsx`: the rows' renderer; `components/SessionSidebar.tsx`: the sections' folds and the header button's target; `components/SettingsPanel.tsx`: the folder's row | starts a new session from something else than `newSessionCwd`, gives a folder access some other way than `allowFileRoot()`, or changes how `buildSessionTree()` orders its rows or `getRowOffsets()` sizes them |
-| Projects +: a new named folder, listed as a project from then on | `components/NewProjectDialog.tsx`, `hooks/useNewProjectFolder.ts`, `lib/directory-client.ts` | `lib/session-tree.ts`: `createdProjects` among the groups; `components/SessionSidebar.tsx`: the dialog; `components/DirectoryPicker.tsx`: `parentPicker`; `lib/session-ui-state*.ts`, `app/api/sessions/ui-state/route.ts`: `register-project` | changes what the ui-state file keeps, or what `POST /api/cwd/browse` and `/api/cwd/validate` answer |
+| Projects +: select or create a folder in pi-web's directory picker, then add it to the sidebar and open a new conversation there | `components/SidebarSectionRows.tsx`: the + | `components/SessionSidebar.tsx`: reuses `DirectoryPicker` and `/api/cwd/validate`, then registers the selected folder; `lib/session-tree.ts`: `createdProjects` among the groups; `lib/session-ui-state*.ts`, `app/api/sessions/ui-state/route.ts`: `register-project` | changes when the picker confirms a selection, what directory validation returns, or how projects without sessions are stored and listed |
 | Settings › General in two columns from 900 px; Appearance, Fonts and Language left, Chat, Workspace and Tools right; the tool rows hold their place while they load | a section of `app/desktop.css` | `components/SettingsPanel.tsx`: two wrappers around the sections, Language moved up, three sections under one heading, placeholders for the tool rows; `lib/theme.ts`: System last in the themes' order | adds a section to General (it lands in the right column), or sizes the themes' grid differently |
 | Archive in the sidebar: a separate entry with a divider and a right-aligned count, and a view with its own heading and controls | `components/SidebarArchive.tsx`; `lib/sidebar-sections.ts` reserves the space above the entry button that `app/desktop.css` uses for padding | `components/SessionTree.tsx`: the entry and the group count; `components/SessionSidebar.tsx`: Tasks stays with the main view, and the archive gets a separate back button and title | moves the footer, changes how `getRowOffsets()` sizes the entry, or changes how the main view and archive share space and restore focus |
 

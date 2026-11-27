@@ -111,7 +111,6 @@ import { useSessionUiState } from "@/hooks/useSessionUiState";
 import { useDesktopSidebar } from "@/hooks/useDesktopSidebar";
 import { archiveViewState, filesFoldState, useSidebarMotion } from "@/hooks/useSidebarMotion";
 import { DirectoryPicker } from "./DirectoryPicker";
-import { NewProjectDialog } from "./NewProjectDialog";
 import { DismissButton } from "./DismissButton";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { PiWebTitle } from "./PiWebTitle";
@@ -582,8 +581,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   const { tempChatDraft, tempChatCwds, chatDirectoriesReady, onNewTempChat } = useDesktopSidebar();
   const [chatsCollapsed, setChatsCollapsed] = useState(false);
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const handleNewProject = useCallback(() => setNewProjectOpen(true), []);
   const showChats = Boolean(onNewTempChat || tempChatCwds.length || tempChatDraft);
   const chats = useMemo(() => showChats ? {
     cwds: tempChatCwds, collapsed: chatsCollapsed, draft: Boolean(tempChatDraft && !taskPageOpen), label: t("sidebar.chats"),
@@ -608,7 +605,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
   const [homeDir, setHomeDir] = useState<string>("");
   // Open for the files tab's project list, or for the composer's bar ("new-session").
-  const [customPathOpen, setCustomPathOpen] = useState<false | "files" | "new-session">(false);
+  const [customPathOpen, setCustomPathOpen] = useState<false | "files" | "new-session" | "add-project">(false);
   const [customPathValue, setCustomPathValue] = useState(loadLastCustomCwd);
   const [customPathError, setCustomPathError] = useState<string | null>(null);
   const [customPathValidating, setCustomPathValidating] = useState(false);
@@ -1437,6 +1434,17 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     : undefined;
   const currentWorktreePath = currentWorktree?.path ?? null;
 
+  // Every "new session" goes through here. The cwd moves first, on the click
+  // path like a session pick, and the shell gets the target's project so it
+  // adopts it up front: a session in another project closes the previous
+  // project's file tabs instead of being mistaken for identity hydration.
+  const startNewSessionIn = useCallback(({ cwd, projectKey, projectRoot, carryComposer }: NewSessionTarget) => {
+    // A worktree without sessions has no other source of identity yet.
+    if (projectKey && projectRoot) setValidatedProject({ cwd, root: projectRoot, key: projectKey });
+    setSelectedCwd(cwd);
+    onNewSession?.(createTempSessionId(), cwd, projectKey, carryComposer ? { carryComposer: true } : undefined);
+  }, [onNewSession]);
+
   // `purpose`: who asked, the folder picker's opener by default ("Use default directory" names its own).
   const commitCustomPath = useCallback(async (candidate?: string, { remember = true, purpose = customPathOpen } = {}) => {
     const path = (candidate ?? customPathValue).trim();
@@ -1460,11 +1468,21 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
         setCustomPathError(data.error ?? `HTTP ${res.status}`);
         return;
       }
+      if (purpose === "add-project" && !await applyUiStateRequest({ action: "register-project", projectKey: data.projectKey, root: data.projectRoot })) {
+        setCustomPathError(t("sidebar.addProjectFailed"));
+        return;
+      }
       if (remember) {
         saveLastCustomCwd(data.cwd);
         setCustomPathValue(data.cwd);
       }
       setCustomPathOpen(false);
+      if (purpose === "add-project") {
+        folderReturnFocusRef.current = null;
+        setProjectsCollapsed(false);
+        startNewSessionIn({ cwd: data.cwd, projectKey: data.projectKey, projectRoot: data.projectRoot });
+        return;
+      }
       if (purpose === "new-session") {
         // The composer's bar asked: the shell decides whether its fresh
         // composer moves there, and the sidebar's cwd moves only with it.
@@ -1488,8 +1506,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     } finally {
       setCustomPathValidating(false);
     }
-  }, [customPathOpen, customPathValue, customPathValidating, focusAfterCommit]);
+  }, [applyUiStateRequest, customPathOpen, customPathValue, customPathValidating, focusAfterCommit, startNewSessionIn, t]);
 
+  const handleNewProject = useCallback((opener: HTMLButtonElement) => {
+    folderReturnFocusRef.current = opener;
+    setCustomPathError(null);
+    setCustomPathOpen("add-project");
+  }, []);
   const handleCustomPathClick = useCallback(() => {
     setCustomPathOpen("files");
     setCustomPathError(null);
@@ -1580,16 +1603,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     onSelectSession(s, false, entryId, blockIndex, options);
   }, [onSelectSession]);
 
-  // Every "new session" goes through here. The cwd moves first, on the click
-  // path like a session pick, and the shell gets the target's project so it
-  // adopts it up front: a session in another project closes the previous
-  // project's file tabs instead of being mistaken for identity hydration.
-  const startNewSessionIn = useCallback(({ cwd, projectKey, projectRoot, carryComposer }: NewSessionTarget) => {
-    // A worktree without sessions has no other source of identity yet.
-    if (projectKey && projectRoot) setValidatedProject({ cwd, root: projectRoot, key: projectKey });
-    setSelectedCwd(cwd);
-    onNewSession?.(createTempSessionId(), cwd, projectKey, carryComposer ? { carryComposer: true } : undefined);
-  }, [onNewSession]);
   // The handle below is made once: it calls the newest closure.
   const startNewSessionInRef = useRef(startNewSessionIn);
   startNewSessionInRef.current = startNewSessionIn;
@@ -3234,24 +3247,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
       onFocus={(event) => { sidebarFocusRef.current = event.target; }}
       onBlur={(event) => { if (event.relatedTarget === null && !document.hasFocus()) return; if (!event.currentTarget.contains(event.relatedTarget)) sidebarFocusRef.current = null; }}
     >
-      {newProjectOpen && <NewProjectDialog
-        onCancel={() => setNewProjectOpen(false)}
-        onRegister={({ projectKey, projectRoot }) => applyUiStateRequest({ action: "register-project", projectKey, root: projectRoot })}
-        onOpen={(target) => {
-          setNewProjectOpen(false);
-          setProjectsCollapsed(false);
-          startNewSessionIn(target);
-        }}
-      />}
       {customPathOpen && (
         <DirectoryPicker
           initialPath={customPathValue}
           busy={customPathValidating}
           error={customPathError}
           onCancel={() => {
-            // The composer's "Open another project…" puts focus back on its
-            // control: the picker took it and leaves nothing behind.
-            const opener = customPathOpen === "new-session" ? folderReturnFocusRef.current : null;
+            const opener = customPathOpen === "files" ? null : folderReturnFocusRef.current;
             folderPickRef.current = null;
             folderReturnFocusRef.current = null;
             setCustomPathOpen(false);

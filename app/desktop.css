@@ -230,41 +230,6 @@ html[data-desktop-caption] :is([data-desktop-bar="center"], [data-mobile-toolbar
   .sidebar-archive-view-desktop :is(.sidebar-archive-back, .sidebar-archive-menu-button) { width: 44px; height: 44px; }
 }
 
-/* The dialog of Projects +. Plain classes, not a CSS module: the sidebar that
-   opens it is rendered by pi-web's own tests, which load no CSS modules. */
-.new-project-dialog {
-  width: min(400px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
-  margin: auto;
-  padding: 20px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgb(0 0 0 / 18%);
-}
-.new-project-dialog::backdrop { background: rgb(0 0 0 / 35%); }
-.new-project-dialog form { display: grid; gap: 6px; }
-.new-project-dialog h2 { margin: 0 0 10px; font-size: 16px; font-weight: 650; }
-.new-project-dialog label { font-size: 13px; color: var(--text-muted); }
-.new-project-dialog input, .new-project-path, .new-project-dialog footer button {
-  min-height: 36px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 10px;
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: 13px;
-}
-.new-project-dialog input { margin-bottom: 6px; min-width: 0; }
-.new-project-path { overflow-wrap: anywhere; text-align: start; font-family: var(--font-mono); }
-.new-project-dialog :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.new-project-dialog p { margin: 6px 0 0; font-size: 13px; overflow-wrap: anywhere; }
-.new-project-dialog footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
-.new-project-dialog footer button[type="submit"] { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
-.new-project-dialog button:not(:disabled) { cursor: pointer; }
-.new-project-dialog button:disabled { opacity: .55; }
-
 /* ── General settings in two columns ─────────────────────────────────────────
    pi-web lays General out as one centered column (app/settings.css). Here its
    sections sit in .settings-general-layout > .settings-general-column

@@ -722,31 +722,41 @@ async function probeGeneralChats(shell, win, check) {
   await closeSettings(win, run);
 }
 
-/** Projects +: its dialog, and a folder made there staying listed as a project with no session and no pin. */
+/** Projects +: pi-web's directory picker and registration of an existing folder without a session. */
 async function probeNewProject(shell, win, workDir, check) {
   const run = await openFixtureSession(shell, win, check);
   if (!run) return;
-  await run(`document.querySelector('[data-row-key="projects-header"] .sidebar-section-add').click()`);
-  const dialog = await waitFor(() => run(`Boolean(document.querySelector("dialog.new-project-dialog[open] #new-project-name"))`), 5000);
-  check("Projects + opens the New project dialog", dialog, dialog ? undefined : await describeWindow(shell));
-  if (dialog) {
-    await run(`document.querySelector("dialog.new-project-dialog footer button").click()`);
-    check("Cancel closes the dialog", await waitFor(() => run(`!document.querySelector("dialog.new-project-dialog")`), 5000));
-  }
-  // What the dialog does with the folder it made: pi-web validates it, the sidebar's state records it.
-  const folder = path.join(workDir, "made with projects plus");
+  const add = '[data-row-key="projects-header"] .sidebar-section-add';
+  const dialog = ".directory-picker-backdrop";
+  await run(`document.querySelector(${JSON.stringify(add)}).click()`);
+  const opened = await waitFor(() => run(`Boolean(document.querySelector(".directory-picker-path"))`), 5000);
+  check("Projects + opens pi-web's directory picker", opened, opened ? undefined : await describeWindow(shell));
+  if (!opened) return;
+  await run(`document.querySelector(".directory-picker-footer button:nth-last-child(2)").click()`);
+  const closed = await waitFor(() => run(`!document.querySelector(${JSON.stringify(dialog)})`), 5000);
+  check("Cancel closes the directory picker", closed);
+  if (!closed) return;
+
+  const folder = path.join(workDir, "opened with projects plus");
   fs.mkdirSync(folder, { recursive: true });
-  const made = await run(`(async () => {
-    const post = async (url, body) => {
-      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      return { status: response.status, ...(await response.json()) };
-    };
-    const project = await post("/api/cwd/validate", { cwd: ${JSON.stringify(folder)} });
-    const registered = await post("/api/sessions/ui-state", { action: "register-project", projectKey: project.projectKey, root: project.projectRoot });
-    return { validated: project.status, registered: registered.status, key: project.projectKey };
+  await run(`document.querySelector(${JSON.stringify(add)}).click()`);
+  const select = ".directory-picker-footer button:last-child";
+  const ready = await waitFor(() => run(`Boolean(document.querySelector(".directory-picker-path") && document.querySelector(${JSON.stringify(select)})?.matches(":enabled"))`), 5000);
+  check("the directory picker is ready to select a folder", ready);
+  if (!ready) return;
+  await run(`(() => {
+    const input = document.querySelector(".directory-picker-path");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(folder)});
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   })()`);
-  const listed = made.registered === 200 && await waitFor(() => run(`[...document.querySelectorAll("[data-row-key]")].some((row) => row.dataset.rowKey === ${JSON.stringify(`group:${made.key}`)})`), 20_000);
-  check("a folder made with Projects + is listed as a project before it has a session", listed, made);
+  await run(`document.querySelector(${JSON.stringify(select)}).click()`);
+  const listed = await waitFor(() => run(`(async () => {
+    if (document.querySelector(${JSON.stringify(dialog)})) return false;
+    const { state } = await (await fetch("/api/sessions/ui-state")).json();
+    const entry = Object.entries(state?.createdProjects ?? {}).find(([, root]) => root === ${JSON.stringify(folder)});
+    return Boolean(entry && [...document.querySelectorAll("[data-row-key]")].some(row => row.dataset.rowKey === "group:" + entry[0]));
+  })()`), 20_000);
+  check("the selected folder stays listed as a project before it has a session", listed, listed ? undefined : await describeWindow(shell));
 }
 
 /** Settings › General: two columns in a wide window, with the tool switches loaded in their place. */
