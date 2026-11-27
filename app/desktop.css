@@ -159,6 +159,77 @@ html[data-desktop-caption] :is([data-desktop-bar="center"], [data-mobile-toolbar
   .sidebar-section-add { width: 40px; height: 40px; }
 }
 
+/* Archive entry and view for the desktop sidebar. */
+.sidebar-archive-entry { padding-block-start: 6px; }
+.sidebar-archive-entry::before {
+  position: absolute;
+  top: -2px;
+  inset-inline: 6px;
+  border-top: 1px solid var(--border);
+  content: "";
+  pointer-events: none;
+}
+.sidebar-archive-entry .session-tree-footer-button {
+  gap: 5px;
+  padding-inline: 6px;
+  font-weight: 500;
+}
+.sidebar-archive-entry .session-tree-footer-button > svg { flex: none; }
+.sidebar-archive-entry-count {
+  flex: none;
+  min-width: 20px;
+  padding-inline: 4px;
+  border-radius: 5px;
+  background: var(--bg-selected);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+}
+.sidebar-archive-view-desktop .sidebar-archive-bar {
+  position: relative;
+  gap: 6px;
+  height: 28px;
+  margin: 6px 6px 9px;
+  padding: 0;
+  border: 0;
+}
+.sidebar-archive-view-desktop .sidebar-archive-bar::after {
+  position: absolute;
+  bottom: -5px;
+  inset-inline: 6px;
+  border-top: 1px solid var(--border);
+  content: "";
+}
+.sidebar-archive-view-desktop .sidebar-archive-back {
+  flex: none;
+  justify-content: center;
+  width: 26px;
+  padding: 0;
+  color: var(--text-dim);
+}
+.sidebar-archive-view-desktop .sidebar-archive-back:hover { color: var(--text); }
+.sidebar-archive-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-archive-view-desktop .sidebar-archive-menu-button { flex: none; }
+.sidebar-archive-view-desktop .session-tree-archive-group-count {
+  margin-inline-start: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  .sidebar-archive-view-desktop .sidebar-archive-bar { height: 44px; }
+  .sidebar-archive-view-desktop :is(.sidebar-archive-back, .sidebar-archive-menu-button) { width: 44px; height: 44px; }
+}
+
 /* The dialog of Projects +. Plain classes, not a CSS module: the sidebar that
    opens it is rendered by pi-web's own tests, which load no CSS modules. */
 .new-project-dialog {

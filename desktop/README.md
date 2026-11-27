@@ -137,7 +137,7 @@ components over a mock API (`e2e/preview-*.mjs`): the flows a self-test cannot d
 model. A preview already serving its port is used as it is.
 
 - `e2e/model-import.mjs` (port 30243): a model import, with a catalog lookup that fails and one that answers late
-- `e2e/task-home.mjs` (port 30245): the tasks page, a General chat from its + to its first send, Projects +
+- `e2e/task-home.mjs` (port 30245): the tasks page, a General chat from its + to its first send, Projects +, and archive navigation and focus
 - `e2e/general-settings.mjs` (the same preview): Settings › General at five widths, with a slow and a failing tool-settings request
 
 **`npm run test:upstream`** runs pi-web's own tests and reports only the failures that are not
@@ -190,8 +190,8 @@ How a change is made, so that it stays that way:
   The sidebar's Tasks, General and Projects are one change: they share their look, the
   sidebar's state and their checks.
 
-`npm run verify` has a check for each change, because upstream can also move the code around
-such a line without git noticing.
+`npm run verify` and `npm run test:pages` check the desktop changes. Upstream can move the
+code a change depends on without Git noticing.
 
 | Change | Own files | Lines in pi-web's files | Breaks without a conflict when upstream |
 | --- | --- | --- | --- |
@@ -205,8 +205,9 @@ such a line without git noticing.
 | General chats, in a General section above Projects | `lib/temp-chats.ts`, `lib/temp-chat-path.ts`, `app/api/temp-chats/route.ts`, `hooks/useTempChatDirectories.ts`, `components/TempChatSettings.tsx`, `lib/sidebar-sections.ts`, `components/SidebarSectionRows.tsx` | `components/AppShell.tsx`: `showTempChat()` and `openTempChat()`, and the chat's folder as its composer's `newSessionCwd`; `lib/session-tree.ts`: the sections' rows when given `chats`, and a chat's folder kept out of the project groups; `components/SessionTree.tsx`: the rows' renderer; `components/SessionSidebar.tsx`: the sections' folds and the header button's target; `components/SettingsPanel.tsx`: the folder's row | starts a new session from something else than `newSessionCwd`, gives a folder access some other way than `allowFileRoot()`, or changes how `buildSessionTree()` orders its rows or `getRowOffsets()` sizes them |
 | Projects +: a new named folder, listed as a project from then on | `components/NewProjectDialog.tsx`, `hooks/useNewProjectFolder.ts`, `lib/directory-client.ts` | `lib/session-tree.ts`: `createdProjects` among the groups; `components/SessionSidebar.tsx`: the dialog; `components/DirectoryPicker.tsx`: `parentPicker`; `lib/session-ui-state*.ts`, `app/api/sessions/ui-state/route.ts`: `register-project` | changes what the ui-state file keeps, or what `POST /api/cwd/browse` and `/api/cwd/validate` answer |
 | Settings › General in two columns from 900 px; Appearance, Fonts and Language left, Chat, Workspace and Tools right; the tool rows hold their place while they load | a section of `app/desktop.css` | `components/SettingsPanel.tsx`: two wrappers around the sections, Language moved up, three sections under one heading, placeholders for the tool rows; `lib/theme.ts`: System last in the themes' order | adds a section to General (it lands in the right column), or sizes the themes' grid differently |
+| Archive in the sidebar: a separate entry with a divider and a right-aligned count, and a view with its own heading and controls | `components/SidebarArchive.tsx`; `lib/sidebar-sections.ts` reserves the space above the entry button that `app/desktop.css` uses for padding | `components/SessionTree.tsx`: the entry and the group count; `components/SessionSidebar.tsx`: Tasks stays with the main view, and the archive gets a separate back button and title | moves the footer, changes how `getRowOffsets()` sizes the entry, or changes how the main view and archive share space and restore focus |
 
-The three rows of the sidebar also share `hooks/useDesktopSidebar.ts` and a section of
+The three main sidebar rows also share `hooks/useDesktopSidebar.ts` and a section of
 `app/desktop.css`.
 
 For file actions and the caption the page reaches the shell through `window.piDesktopHost`
@@ -285,6 +286,6 @@ HTTP API offer, so a new release needs no change here unless one of these change
 - `GET /api/agent/running` and `GET /api/agent/debug` (`server.terminals.count`), read to decide whether a hidden page may be released
 - the page calling `window.focus()` when its notification is clicked, and using its service worker only behind `"serviceWorker" in navigator` (`src/preload.cjs`)
 
-`npm run verify` fails when one of the first two breaks, when the page no longer loads
-without its service worker, or when a change listed above no longer works. It cannot tell
-whether the page still calls `window.focus()`.
+`npm run verify` exercises the launcher and API contracts, and starts the app with its service
+worker disabled. Checking whether notification clicks still call `window.focus()` takes a
+manual run.

@@ -118,6 +118,7 @@ import { PiWebTitle } from "./PiWebTitle";
 import { ProjectWorktreePicker, type ProjectWorktreePickerHandle, type WorktreeRemoval } from "./ProjectWorktreePicker";
 import { SessionSearch } from "./SessionSearch";
 import { SessionTree, sessionRowTitle, type SessionTreeReveal } from "./SessionTree";
+import { SidebarArchiveBackIcon } from "./SidebarArchive";
 import { SidebarMenu, type SidebarMenuAnchor, type SidebarMenuItem } from "./SidebarMenu";
 import { SidebarToast, type SidebarToastAction, type SidebarToastData } from "./SidebarToast";
 import {
@@ -3017,7 +3018,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     if (menu.askDelete) menuBody = archiveDeleteBody({ projectKey: project.key }, project);
     menuWidth = 248;
   } else if (menu?.kind === "archive") {
-    menuTitle = t("sidebar.archived");
+    menuTitle = t(onOpenTasks ? "sidebar.archive" : "sidebar.archived");
     menuLabel = t("sidebar.archiveActions");
     menuItems = archiveMenuItems();
     if (menu.askDelete) menuBody = archiveDeleteBody(menu.askDelete, null);
@@ -3217,6 +3218,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     </ToolbarIconButton>
   );
 
+  const tasksEntry = onOpenTasks && (
+    <button type="button" className={`sidebar-tasks-entry sidebar-section-entry${isMobile ? " is-mobile" : ""}`} aria-current={taskPageOpen ? "page" : undefined} onClick={onOpenTasks}>
+      <TasksIcon size={14} />
+      <span>{t("sidebar.tasks")}</span>
+      {taskCount > 0 && <span className="sidebar-task-count">{taskCount}</span>}
+    </button>
+  );
+
   return (
     <div
       ref={setSidebarRoot}
@@ -3356,13 +3365,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
         className="sidebar-panel sidebar-sessions-panel"
         onScrollCapture={rememberScroll}
       >
-        {onOpenTasks && (
-          <button type="button" className={`sidebar-tasks-entry sidebar-section-entry${isMobile ? " is-mobile" : ""}`} aria-current={taskPageOpen ? "page" : undefined} onClick={onOpenTasks}>
-            <TasksIcon size={14} />
-            <span>{t("sidebar.tasks")}</span>
-            {taskCount > 0 && <span className="sidebar-task-count">{taskCount}</span>}
-          </button>
-        )}
+        {sessionSearchOpen && (!archiveMounted || sessionSearchQuery.trim() !== "") && tasksEntry}
         {sessionSearchOpen && (
           <div className="sidebar-search">
             <input
@@ -3400,6 +3403,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
             {/* Kept mounted under the archive view, so going back finds it as
                 it was: inert while the archive slides in, then hidden. */}
             <div className="sidebar-sessions-view" hidden={archiveMotion.mainHidden} inert={archiveMotion.mainInert}>
+              {!sessionSearchOpen && tasksEntry}
               <SessionTree
                 {...treeProps}
                 rows={model.rows}
@@ -3412,7 +3416,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
                 in it is clicked twice; the tree is back under it at once. */}
             {archiveMotion.archiveMounted && (
               <div
-                className={`sidebar-sessions-view sidebar-archive-view${archiveMotion.archiveClass ? ` ${archiveMotion.archiveClass}` : ""}`}
+                className={`sidebar-sessions-view sidebar-archive-view${onOpenTasks ? " sidebar-archive-view-desktop" : ""}${archiveMotion.archiveClass ? ` ${archiveMotion.archiveClass}` : ""}`}
                 inert={archiveMotion.archiveInert}
                 onAnimationEnd={(event) => { if (event.target === event.currentTarget) endArchiveMotion(); }}
               >
@@ -3422,13 +3426,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
                     type="button"
                     className="sidebar-archive-back"
                     title={t("sidebar.backToSessions")}
-                    aria-label={`${t("sidebar.backToSessions")}: ${t("sidebar.archivedCount", { count: archivedCount })}`}
+                    aria-label={onOpenTasks ? t("sidebar.backToSessions") : `${t("sidebar.backToSessions")}: ${t("sidebar.archivedCount", { count: archivedCount })}`}
                     onClick={() => setArchiveView(false)}
                   >
-                    <ChevronIcon size={13} className="sidebar-icon-back" />
-                    <span>{t("sidebar.archived")}</span>
-                    <span className="sidebar-archive-count">· {archivedCount}</span>
+                    {onOpenTasks ? <SidebarArchiveBackIcon /> : (
+                      <>
+                        <ChevronIcon size={13} className="sidebar-icon-back" />
+                        <span>{t("sidebar.archived")}</span>
+                        <span className="sidebar-archive-count">· {archivedCount}</span>
+                      </>
+                    )}
                   </button>
+                  {onOpenTasks && <h2 className="sidebar-archive-title">{t("sidebar.archive")}</h2>}
                   <button
                     type="button"
                     className={`sidebar-archive-menu-button${menu?.kind === "archive" ? " is-active" : ""}`}

@@ -241,6 +241,56 @@ try {
   await page.mouse.move(800,100);
   await page.locator(".session-sidebar").screenshot({ path: `${results}/sidebar-compact-zh.png` });
   pass("Tasks, General, Projects and the projects are rows of one height; the entries are 6px apart, the projects 4px below Projects and apart");
+
+  await chats.getByRole("button", { name: "通用", exact: true }).click();
+  const quickNote = groups.locator('[data-row-key="session:chat:temp-history"]');
+  await quickNote.hover();
+  await quickNote.getByRole("button", { name: "归档", exact: true }).click();
+  await page.locator(".sidebar-toast-dismiss").click();
+  await chats.getByRole("button", { name: "通用", exact: true }).click();
+  const archiveEntry = groups.getByRole("button", { name: "归档 1", exact: true });
+  assert.equal(await labelX(archiveEntry), await labelX(tasks));
+  const archiveSpacing = await archiveEntry.evaluate(button => {
+    const row = button.parentElement;
+    const divider = getComputedStyle(row, "::before");
+    const dividerBottom = row.getBoundingClientRect().top + parseFloat(divider.top) + parseFloat(divider.borderTopWidth);
+    const rect = button.getBoundingClientRect();
+    return { gap: rect.top - dividerBottom, height: rect.height };
+  });
+  assert.deepEqual(archiveSpacing, { gap: 7, height: 28 });
+  assert.equal(await archiveEntry.locator(".sidebar-archive-entry-count").innerText(), "1");
+  const tasksTop = (await tasks.boundingBox()).y;
+  await page.mouse.move(800, 100);
+  await groups.screenshot({ path: `${results}/sidebar-archive-entry-zh.png` });
+  await archiveEntry.press("Enter");
+  const archive = groups.locator(".sidebar-archive-view");
+  const back = archive.getByRole("button", { name: "返回", exact: true });
+  await page.waitForFunction(() => document.activeElement?.classList.contains("sidebar-archive-back"));
+  await groups.locator(".sidebar-archive-view.is-entering").waitFor({ state: "hidden" });
+  assert.equal(await tasks.isVisible(), false);
+  assert.equal((await archive.locator(".sidebar-archive-bar").boundingBox()).y, tasksTop);
+  await archive.getByRole("heading", { name: "归档", exact: true }).waitFor();
+  const archivedNote = archive.getByText("Quick note", { exact: true });
+  await archivedNote.waitFor();
+  const groupCount = archive.locator(".session-tree-archive-group-count");
+  assert.equal(await groupCount.innerText(), "1");
+  const countBox = await groupCount.boundingBox();
+  const timeBox = await archive.locator(".session-tree-meta").boundingBox();
+  assert.ok(Math.abs(countBox.x + countBox.width - timeBox.x - timeBox.width) < 1);
+  await back.blur();
+  await groups.screenshot({ path: `${results}/sidebar-archive-view-zh.png` });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await back.waitFor();
+  assert.equal((await back.boundingBox()).height, 44);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await archive.getByRole("button", { name: "归档操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "折叠全部项目", exact: true }).click();
+  await archivedNote.waitFor({ state: "hidden" });
+  await back.press("Enter");
+  await tasks.waitFor();
+  await page.waitForFunction(() => document.activeElement?.parentElement?.dataset.rowKey === "footer-archived");
+  pass("Archive entry aligns with Tasks; the archive replaces the main sidebar view, keeps its project menu, and restores keyboard focus on return");
+
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(unexpected, []);
   pass("No uncaught page errors, failed API responses, or outside browser requests");
 } catch (err) { failed = String(err?.stack ?? err); await screenshot("failure").catch(() => {}); throw err; }

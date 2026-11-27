@@ -36,6 +36,7 @@ import { isPlainActivation, sessionDeepLink } from "@/lib/session-links";
 import { SESSION_DRAG_MIME, sessionDragData } from "@/lib/session-drag";
 import { formatRelativeTime, formatShortRelativeTime } from "@/lib/i18n/format";
 import { skillExpansionToCommand } from "@/lib/slash-display";
+import { useDesktopSidebar } from "@/hooks/useDesktopSidebar";
 import { useGroupDrag, type GroupDragHandlers } from "@/hooks/useGroupDrag";
 import { useI18n } from "@/hooks/useI18n";
 import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
@@ -52,6 +53,7 @@ import {
   SpinnerIcon,
   TrashIcon,
 } from "./SidebarIcons";
+import { SidebarArchiveEntry } from "./SidebarArchive";
 import { SidebarSectionRow, type SectionRowHandlers } from "./SidebarSectionRows";
 
 /**
@@ -1148,13 +1150,15 @@ const PlainRowView = memo(function PlainRowView({
       );
     case "footer-archived":
       return (
-        <div className="session-tree-row session-tree-footer" style={style} data-row-key={row.key}>
-          <button type="button" className="session-tree-footer-button" onClick={() => handlers.current.onOpenArchive()}>
-            <ArchiveIcon size={12} />
-            <span className="session-tree-footer-label">{t("sidebar.archivedCount", { count: row.count })}</span>
-            <ChevronIcon size={10} className="session-tree-footer-chevron" />
-          </button>
-        </div>
+        <SidebarArchiveEntry rowKey={row.key} count={row.count} style={style} onOpen={() => handlers.current.onOpenArchive()}>
+          <div className="session-tree-row session-tree-footer" style={style} data-row-key={row.key}>
+            <button type="button" className="session-tree-footer-button" onClick={() => handlers.current.onOpenArchive()}>
+              <ArchiveIcon size={12} />
+              <span className="session-tree-footer-label">{t("sidebar.archivedCount", { count: row.count })}</span>
+              <ChevronIcon size={10} className="session-tree-footer-chevron" />
+            </button>
+          </div>
+        </SidebarArchiveEntry>
       );
   }
 });
@@ -1178,6 +1182,7 @@ const ArchiveGroupRowView = memo(function ArchiveGroupRowView({
   handlers: Handlers;
 }) {
   const { t } = useI18n();
+  const { onOpenTasks } = useDesktopSidebar();
   const { project, expanded } = row;
   const className = [
     "session-tree-row session-tree-group session-tree-archive-group",
@@ -1195,7 +1200,7 @@ const ArchiveGroupRowView = memo(function ArchiveGroupRowView({
       >
         <ChevronIcon size={12} strokeWidth={3} className={`session-tree-chevron${expanded ? " is-open" : ""}`} />
         <span className="session-tree-group-name">{project.name}</span>
-        <span className="session-tree-archive-group-count">· {row.count}</span>
+        <span className="session-tree-archive-group-count">{onOpenTasks ? row.count : `· ${row.count}`}</span>
       </button>
       <span className="session-tree-group-actions">
         <button

@@ -65,6 +65,8 @@ function hasSections(rows: readonly SidebarRow[]): boolean {
 export function sectionRowHeight(rows: readonly SidebarRow[], index: number, layout: SidebarLayout): number | undefined {
   const row = rows[index];
   if (row.kind === "spacer") return hasSections(rows) ? (SECTION_SPACERS.has(row.key) ? SECTION_GAP : PROJECT_GAP) : undefined;
+  // Leave a section gap above the archive button (app/desktop.css).
+  if (row.kind === "footer-archived" && hasSections(rows)) return SECTION_ROW_HEIGHTS[layout]["projects-header"] + SECTION_GAP;
   const heights: Partial<Record<SidebarRow["kind"], number>> = SECTION_ROW_HEIGHTS[layout];
   return heights[row.kind];
 }
