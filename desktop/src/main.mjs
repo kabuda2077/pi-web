@@ -115,6 +115,7 @@ async function start() {
     // The `server-fails` self-test names a Node binary that does not exist.
     nodePath: selfTestScenario === "server-fails" ? path.join(selfTestDir, "no-such-node.exe") : paths.nodePath,
     serverDir: paths.serverDir,
+    packaged: app.isPackaged,
     env: serverEnvironment(),
     host: HOST,
     // A self-test may run while the app itself holds the usual port.

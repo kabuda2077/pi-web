@@ -1,7 +1,7 @@
 {
   "name": "pi-web-desktop",
   "productName": "Pi Web Desktop",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Desktop app for the pi coding agent, built on pi-web",
   "author": "kabuda2077",

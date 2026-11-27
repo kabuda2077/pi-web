@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import net from "node:net";
 import path from "node:path";
+import { prepareRouteCache } from "./route-cache.mjs";
 
 // Next.js prints "Ready" before it has loaded its request handlers, and the
 // first request then also waits out the pi SDK import (seconds on Windows), so
@@ -120,7 +121,8 @@ export class Backend extends EventEmitter {
   /** Starts the server and resolves once it has served its first page. Rejects when it does not come up. */
   async start() {
     if (this.running) throw new Error("The server is already running");
-    const { nodePath, serverDir, env, host, preferredPort, fetchImpl, log } = this.#options;
+    const { nodePath, serverDir, packaged, env, host, preferredPort, fetchImpl, log } = this.#options;
+    if (packaged) prepareRouteCache(serverDir);
     const launcher = path.join(serverDir, "bin", "pi-web.js");
 
     if (!this.#port) {

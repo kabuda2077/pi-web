@@ -155,6 +155,9 @@ by its own patterns.
 Intermediate files go to `desktop/node_modules/.cache/build`.
 
 Running the installer over a running app closes it first; that is how an update is installed.
+Before the packaged server starts, the shell checks the Next.js build ID against the route
+cache and clears cache entries left by an older installation. Reopening the same build
+keeps its cache and the app's profile stays in place.
 
 ## Changes to pi-web
 
