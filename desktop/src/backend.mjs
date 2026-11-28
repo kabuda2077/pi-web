@@ -145,7 +145,7 @@ export class Backend extends EventEmitter {
 
     const child = spawn(nodePath, [launcher, "--port", String(port), "--hostname", host, "--no-open"], {
       cwd: serverDir,
-      env,
+      env: packaged ? { ...env, PI_WEB_DESKTOP_STANDALONE: "1" } : env,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });

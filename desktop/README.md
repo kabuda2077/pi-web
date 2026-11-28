@@ -13,11 +13,12 @@ in pi-web itself is listed under [Changes to pi-web](#changes-to-pi-web).
 | Part | Where | What it is |
 | --- | --- | --- |
 | Shell | `Pi Web Desktop.exe`, `resources/app.asar` | Electron: the window, the tray icon, starting and stopping the server (`src/`) |
-| Server | `resources/server` | this repository's pi-web as its npm package holds it (`npm pack`), with the production dependencies from pi-web's lockfile |
+| Server | `resources/server` | Next.js standalone output plus pi-web's static assets, CLI launcher and dynamically loaded Pi dependencies |
 | Runtime | `resources/node` | Node.js 22 LTS with npm, which runs the server |
 
-The shell starts the server the way pi-web starts itself: `node bin/pi-web.js --port … --no-open`.
-The window then shows `http://127.0.0.1:30171`.
+The shell starts `node bin/pi-web.js --port … --no-open`. In the installed app, the launcher
+runs the generated standalone `server.js` and still handles preview secret rotation and run
+records. The window then shows `http://127.0.0.1:30171`.
 
 ## What the app adds to pi-web in a browser
 
@@ -152,7 +153,16 @@ run; entries it adds have an empty `why` to fill in.
 This fork's `*.desktop.test.mjs` are among the tests it runs: pi-web's test command finds them
 by its own patterns.
 
-Intermediate files go to `desktop/node_modules/.cache/build`.
+Intermediate files go to `desktop/node_modules/.cache/build`. `scripts/stage.mjs` enables
+standalone output for the desktop build and stages the traced files, static assets, and the
+installed dependency trees needed for Pi's providers, extensions, code mode and Windows
+terminal. When upgrading upstream, check `next.config.ts` and `bin/pi-web.js` for changes to
+tracing and startup. Verify the packaged runtime outside the checkout so its imports cannot
+fall back to the development dependencies.
+
+NSIS extracts the ZIP payload directly into the installation directory.
+`desktop/scripts/build.mjs` disables differential packaging to let electron-builder use ZIP.
+ZIP can increase the installer size and writes files to the target as it extracts them.
 
 Running the installer over a running app closes it first; that is how an update is installed.
 Before the packaged server starts, the shell checks the Next.js build ID against the route
@@ -330,13 +340,13 @@ npm run test:pages
 npm run test:upstream
 ```
 
-The shell reads nothing version-specific from pi-web beyond what its own launcher and
-HTTP API offer, so a new release needs no change here unless one of these changes upstream:
+When following a release, check the standalone build, launcher and HTTP contracts used by the desktop shell:
 
-- `bin/pi-web.js`: the options `--port`, `--hostname`, `--no-open`, and `status` dropping the records of servers that are gone; `bin/run-records.js`
+- `next.config.ts`: the desktop-only standalone output, including the path of `server.js` and the traced runtime files
+- `bin/pi-web.js`: standalone startup, preview secret rotation, the options `--port`, `--hostname`, `--no-open`, and `status` dropping the records of servers that are gone; `bin/run-records.js`
 - `GET /api/agent/running` and `GET /api/agent/debug` (`server.terminals.count`), read to decide whether a hidden page may be released
 - the page calling `window.focus()` when its notification is clicked, and using its service worker only behind `"serviceWorker" in navigator` (`src/preload.cjs`)
 
-`npm run verify` exercises the launcher and API contracts, and starts the app with its service
-worker disabled. Checking whether notification clicks still call `window.focus()` takes a
-manual run.
+`npm run verify` checks that the packaged server starts, exercises the launcher and API
+contracts, and starts the app with its service worker disabled. Checking whether
+notification clicks still call `window.focus()` takes a manual run.

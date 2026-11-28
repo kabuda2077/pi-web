@@ -3,11 +3,11 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { NODE_RUNTIME, repoDir, stageDir, workDir } from "./paths.mjs";
+import { stageRuntimePackages } from "./standalone-runtime.mjs";
 
 // Puts together what the app carries besides its own shell:
 //
-//   stage/server   pi-web exactly as its npm package holds it (`npm pack`),
-//                  plus its production dependencies from pi-web's lockfile
+//   stage/server   Next.js standalone, the pi-web launcher and dynamic dependencies
 //   stage/node     the Node.js that runs it, with npm for plugin installs
 //
 // Nothing here is specific to a pi-web version: a new upstream release is
@@ -45,56 +45,58 @@ function readJson(file) {
 
 function stageServer({ skipBuild }) {
   const serverDir = path.join(stageDir, "server");
-  const packDir = path.join(workDir, "pack");
+  const nextDir = path.join(repoDir, ".next");
+  const standaloneDir = path.join(nextDir, "standalone");
 
   if (!fs.existsSync(path.join(repoDir, "node_modules", "next", "package.json"))) {
     log("installing pi-web's dependencies");
     npm(["ci", "--no-audit", "--no-fund"], { cwd: repoDir });
   }
-  if (skipBuild && fs.existsSync(path.join(repoDir, ".next", "BUILD_ID"))) {
-    log("reusing the existing pi-web build (--skip-build)");
+  if (skipBuild) {
+    log("reusing the existing standalone build (--skip-build)");
   } else {
-    log("building pi-web");
-    npm(["run", "build"], { cwd: repoDir, env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" } });
+    log("building pi-web standalone");
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("__NEXT_PRIVATE_")));
+    npm(["run", "build"], {
+      cwd: repoDir,
+      env: { ...env, NEXT_TELEMETRY_DISABLED: "1", PI_WEB_DESKTOP_BUILD: "1" },
+    });
+  }
+  const standaloneBuildId = path.join(standaloneDir, ".next", "BUILD_ID");
+  if (!fs.existsSync(path.join(standaloneDir, "server.js")) || !fs.existsSync(standaloneBuildId)
+      || fs.readFileSync(standaloneBuildId, "utf8") !== fs.readFileSync(path.join(nextDir, "BUILD_ID"), "utf8")) {
+    throw new Error("The current Next.js build has no matching standalone output. Build without --skip-build.");
   }
 
-  log("packing pi-web as its npm package");
-  fs.rmSync(packDir, { recursive: true, force: true });
-  fs.mkdirSync(packDir, { recursive: true });
-  const packed = npm(["pack", "--json", "--ignore-scripts", "--pack-destination", packDir], {
-    cwd: repoDir,
-    stdio: ["ignore", "pipe", "inherit"],
-    encoding: "utf8",
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  const [{ filename, files }] = JSON.parse(packed.stdout);
-  extract(path.join(packDir, filename), packDir);
-  fs.renameSync(path.join(packDir, "package"), serverDir);
-  // A build that has served pages holds copies of them here, which Next.js
-  // would keep serving after an update (pi-web docs/release.md).
+  // Stage the traced runtime and explicit project assets. Next's standalone
+  // output can also contain project environment files, which stay local.
+  for (const name of ["server.js", ".next", "node_modules"]) {
+    fs.cpSync(path.join(standaloneDir, name), path.join(serverDir, name), { recursive: true });
+  }
+  for (const name of ["bin", "public", "package.json"]) {
+    fs.cpSync(path.join(repoDir, name), path.join(serverDir, name), { recursive: true });
+  }
+  fs.cpSync(path.join(nextDir, "static"), path.join(serverDir, ".next", "static"), { recursive: true });
   fs.rmSync(path.join(serverDir, ".next", "server", "route-cache"), { recursive: true, force: true });
-  log(`pi-web package: ${files.length} files`);
 
-  log("installing pi-web's production dependencies from its lockfile");
-  const lockfile = path.join(serverDir, "package-lock.json");
-  fs.copyFileSync(path.join(repoDir, "package-lock.json"), lockfile);
-  // No dependency runs install scripts, as in pi-web's Dockerfile: node-pty loads its prebuilt binary.
-  npm(["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: serverDir });
-  fs.rmSync(lockfile);
+  // Pi loads provider modules and extension tools dynamically. Next's trace
+  // covers the web runtime, so only fill the runtime closure of these packages.
+  const { dependencies } = readJson(path.join(repoDir, "package.json"));
+  const piPackages = Object.keys(dependencies).filter(name => name.startsWith("@earendil-works/"));
+  const restored = stageRuntimePackages(repoDir, serverDir, ["node-pty", ...piPackages]);
+  log(`restored ${restored} runtime packages for pi and the terminal`);
 
-  // Source maps are read only by `next dev` and `node --enable-source-maps`, neither of
-  // which runs here. pi-web's own package leaves its .next ones out (`files` in its
-  // package.json); the dependencies' are a fifth of the payload and a quarter of its files.
-  const maps = removeSourceMaps(path.join(serverDir, "node_modules"));
-  log(`removed ${maps.count} source maps from the dependencies (${Math.round(maps.bytes / 1024 / 1024)} MB)`);
+  // File traces describe build-machine paths and are only used by the build.
+  const metadata = removeBuildMetadata(serverDir);
+  log(`removed ${metadata.count} build metadata files (${Math.round(metadata.bytes / 1024 / 1024)} MB)`);
   return serverDir;
 }
 
-function removeSourceMaps(dir) {
+function removeBuildMetadata(dir) {
   let count = 0;
   let bytes = 0;
   for (const entry of fs.readdirSync(dir, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".map")) continue;
+    if (!entry.isFile() || !(entry.name.endsWith(".map") || entry.name.endsWith(".nft.json"))) continue;
     const file = path.join(entry.parentPath, entry.name);
     bytes += fs.statSync(file).size;
     fs.rmSync(file);
@@ -137,6 +139,7 @@ async function stageNode() {
 function checkPayload(serverDir, nodeDir) {
   const mustExist = [
     [serverDir, "bin", "pi-web.js"],
+    [serverDir, "server.js"],
     [serverDir, ".next", "BUILD_ID"],
     [serverDir, "public", "icons", "icon-192.png"],
     [serverDir, "node_modules", "next", "package.json"],

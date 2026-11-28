@@ -18,6 +18,7 @@ const gfmAutolinkEmailLoader = join(configDir, "lib/gfm-autolink-email-loader.cj
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: configDir,
+  ...(process.env.PI_WEB_DESKTOP_BUILD === "1" && { output: "standalone" }),
   experimental: {
     // proxy.ts matches /api/:path*, and Next buffers the request body whenever
     // a proxy is present, capped at 10 MB by default. The upload route accepts

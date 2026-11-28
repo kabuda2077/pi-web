@@ -66,6 +66,9 @@ await build({
       oneClick: true,
       perMachine: false,
       artifactName: installerName,
+      // ZIP extracts into the install directory, skipping the staging copy used by 7z.
+      useZip: true,
+      differentialPackage: false,
       // Uninstalling leaves the window state and, always, pi's own ~/.pi.
       deleteAppDataOnUninstall: false,
     },

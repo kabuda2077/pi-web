@@ -75,18 +75,21 @@ function startServer({ port, hostname, openBrowser }) {
   const pkgDir = path.join(__dirname, "..");
   const nextDir = path.join(pkgDir, ".next");
 
+  const standalone = process.env.PI_WEB_DESKTOP_STANDALONE === "1";
   // Resolve next's CLI entry directly to avoid relying on .bin symlinks (which
   // may not exist when installed via npx).
-  let nextBin;
-  try {
-    nextBin = require.resolve("next/dist/bin/next", { paths: [pkgDir] });
-  } catch {
-    // Fallback: locate next package root and derive the bin path manually.
+  let nextBin = path.join(pkgDir, "server.js");
+  if (!standalone) {
     try {
-      const nextPkg = require.resolve("next/package.json", { paths: [pkgDir] });
-      nextBin = path.join(path.dirname(nextPkg), "dist", "bin", "next");
+      nextBin = require.resolve("next/dist/bin/next", { paths: [pkgDir] });
     } catch {
-      nextBin = path.join(pkgDir, "node_modules", "next", "dist", "bin", "next");
+      // Fallback: locate next package root and derive the bin path manually.
+      try {
+        const nextPkg = require.resolve("next/package.json", { paths: [pkgDir] });
+        nextBin = path.join(path.dirname(nextPkg), "dist", "bin", "next");
+      } catch {
+        nextBin = path.join(pkgDir, "node_modules", "next", "dist", "bin", "next");
+      }
     }
   }
 
@@ -118,15 +121,15 @@ function startServer({ port, hostname, openBrowser }) {
     }
   }
 
-  const nextArgs = ["start", "-p", port];
-  nextArgs.push("-H", hostname);
+  const nextArgs = standalone ? [] : ["start", "-p", port, "-H", hostname];
+  const standaloneEnv = standalone ? { PORT: port, HOSTNAME: hostname } : {};
 
   // Always run next's JS entry with node directly — avoids .bin symlink issues
   // and path-with-spaces problems on Windows when shell: true is used.
   const child = spawn(process.execPath, getNextNodeArgs(nextBin, nextArgs), {
     cwd: pkgDir,
     stdio: ["inherit", "pipe", "inherit"],
-    env: { ...process.env, PI_WEB_HOSTNAME: hostname },
+    env: { ...process.env, ...standaloneEnv, PI_WEB_HOSTNAME: hostname },
   });
   wireChildProcessLifecycle(child);
 
