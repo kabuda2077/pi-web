@@ -105,11 +105,25 @@ try {
   assert.equal(await sortByDate.getAttribute("aria-pressed"), "true");
   const recentProject = groups.locator('[data-row-key="session:recent:project-history"]');
   await recentProject.waitFor();
-  assert.equal(await groups.locator('[data-row-key="session:chat:temp-history"]').count(), 1);
-  assert.equal(await groups.locator('[data-row-key="session:recent:temp-history"]').count(), 0);
+  const generalToday = groups.locator('[data-row-key="recent:chats:today"] button');
+  const projectsToday = groups.locator('[data-row-key="recent:today"] button');
+  const recentChat = groups.locator('[data-row-key="session:chat:temp-history"]');
+  await generalToday.waitFor();
+  await recentChat.waitFor();
+  await generalToday.click();
+  await recentChat.waitFor({ state: "hidden" });
+  assert.equal(await projectsToday.getAttribute("aria-expanded"), "true");
+  await recentProject.waitFor();
+  await taskPage.getByRole("button", { name: /Quick note/ }).click();
+  await page.waitForURL(url => url.searchParams.get("session") === "temp-history");
+  await recentChat.waitFor();
+  assert.equal(await generalToday.getAttribute("aria-expanded"), "true");
+  await tasks.click();
   await sortByDate.click();
+  await generalToday.waitFor({ state: "hidden" });
+  await recentChat.waitFor();
   await groups.locator('[data-row-key="group:/fixture/projects/Atlas"]').waitFor();
-  pass("Sort by date opens the Projects section, keeps General separate and switches back to the project groups");
+  pass("Sort by date groups General and Projects separately, and opening a chat reveals it in its own date group");
 
   await taskPage.getByRole("button", { name: /Atlas design review/ }).click();
   await page.waitForURL(url => url.searchParams.get("session") === "project-history");
@@ -277,7 +291,7 @@ try {
   await quickNote.getByRole("button", { name: "归档", exact: true }).click();
   await page.locator(".sidebar-toast-dismiss").click();
   await chats.getByRole("button", { name: "通用", exact: true }).click();
-  const archiveEntry = groups.getByRole("button", { name: "归档 1", exact: true });
+  const archiveEntry = groups.locator('.sidebar-archive-entry button').and(groups.getByRole("button", { name: "归档", exact: true }));
   assert.equal(await labelX(archiveEntry), await labelX(tasks));
   const archiveSpacing = await archiveEntry.evaluate(button => {
     const row = button.parentElement;
@@ -286,8 +300,7 @@ try {
     const rect = button.getBoundingClientRect();
     return { gap: rect.top - dividerBottom, height: rect.height };
   });
-  assert.deepEqual(archiveSpacing, { gap: 7, height: 28 });
-  assert.equal(await archiveEntry.locator(".sidebar-archive-entry-count").innerText(), "1");
+  assert.deepEqual(archiveSpacing, { gap: 5, height: 28 });
   const tasksTop = (await tasks.boundingBox()).y;
   await page.mouse.move(800, 100);
   await groups.screenshot({ path: `${results}/sidebar-archive-entry-zh.png` });

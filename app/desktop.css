@@ -163,7 +163,7 @@ html[data-desktop-caption] :is([data-desktop-bar="center"], [data-mobile-toolbar
 .sidebar-archive-entry { padding-block-start: 6px; }
 .sidebar-archive-entry::before {
   position: absolute;
-  top: -2px;
+  top: 0;
   inset-inline: 6px;
   border-top: 1px solid var(--border);
   content: "";
@@ -175,36 +175,16 @@ html[data-desktop-caption] :is([data-desktop-bar="center"], [data-mobile-toolbar
   font-weight: 500;
 }
 .sidebar-archive-entry .session-tree-footer-button > svg { flex: none; }
-.sidebar-archive-entry-count {
-  flex: none;
-  min-width: 20px;
-  padding-inline: 4px;
-  border-radius: 5px;
-  background: var(--bg-selected);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  line-height: 16px;
-  text-align: center;
-}
 .sidebar-archive-view-desktop .sidebar-archive-bar {
-  position: relative;
-  gap: 6px;
   height: 28px;
-  margin: 6px 6px 9px;
+  margin: 6px 6px 3px;
   padding: 0;
   border: 0;
-}
-.sidebar-archive-view-desktop .sidebar-archive-bar::after {
-  position: absolute;
-  bottom: -5px;
-  inset-inline: 6px;
-  border-top: 1px solid var(--border);
-  content: "";
 }
 .sidebar-archive-view-desktop .sidebar-archive-back {
   flex: none;
   justify-content: center;
-  width: 26px;
+  width: 22px;
   padding: 0;
   color: var(--text-dim);
 }
@@ -213,8 +193,9 @@ html[data-desktop-caption] :is([data-desktop-bar="center"], [data-mobile-toolbar
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;

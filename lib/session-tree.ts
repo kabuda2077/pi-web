@@ -33,6 +33,7 @@ export type SidebarLayout = "desktop" | "mobile";
 export type SidebarListMode = "projects" | "recent";
 /** The recent list's date sections, top to bottom. */
 export type RecentSection = "today" | "yesterday" | "week" | "earlier";
+export type RecentScope = "projects" | "chats";
 export const RECENT_SECTIONS: readonly RecentSection[] = ["today", "yesterday", "week", "earlier"];
 export type SidebarRowKind =
   | "pinned-header" | "session" | "pinned-more" | "group" | "group-more" | "group-empty"
@@ -75,8 +76,8 @@ export type SidebarRow =
   | { kind: "group"; key: string; project: SidebarProject; expanded: boolean; running: number; awaiting: number; unread: number }
   | { kind: "group-more"; key: string; projectKey: string; hidden: number; canShowLess: boolean; nextShown: number }
   | { kind: "group-empty"; key: string; project: SidebarProject }
-  | { kind: "recent-header"; key: `recent:${RecentSection}`; section: RecentSection; count: number; collapsed: boolean; running: number; awaiting: number; unread: number }
-  | { kind: "spacer"; key: "top-spacer" | "pinned-spacer" | "footer-spacer" | `group-spacer:${string}` | `recent-spacer:${RecentSection}` }
+  | { kind: "recent-header"; key: `recent:${RecentSection}` | `recent:chats:${RecentSection}`; section: RecentSection; scope?: RecentScope; count: number; collapsed: boolean; running: number; awaiting: number; unread: number }
+  | { kind: "spacer"; key: "top-spacer" | "pinned-spacer" | "footer-spacer" | `group-spacer:${string}` | `recent-spacer:${RecentSection}` | `recent-spacer:chats:${RecentSection}` }
   | { kind: "footer-open"; key: "footer-open" }
   | { kind: "footer-archived"; key: "footer-archived"; count: number }
   | { kind: "archive-group"; key: string; project: SidebarProject; count: number; expanded: boolean }
@@ -118,8 +119,9 @@ export interface SessionTreeInput {
  */
 export interface RecentListInput {
   today: number;
-  /** Sections folded to their header. */
+  /** Date sections folded to their header, independently for Projects and General. */
   collapsed: ReadonlySet<RecentSection>;
+  chatCollapsed?: ReadonlySet<RecentSection>;
 }
 
 export interface SessionTreeModel {
@@ -493,6 +495,7 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   // Live families outside the pinned section, newest first: the recent list's.
   const otherFamilies: SessionFamily[] = [];
   const chatFamilies: SessionFamily[] = [];
+  const recent = input.listMode === "recent" ? input.recent : undefined;
   // Insertion order follows family activity (newest first).
   const projectFamilies = new Map<string, SessionFamily[]>();
   const projectActivity = new Map<string, number>();
@@ -530,10 +533,15 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     rows.push({ kind: "chats-header", key: "chats-header", collapsed: input.chats.collapsed });
     if (!input.chats.collapsed) {
       if (input.chats.draft) rows.push({ kind: "chat-draft", key: "chat-draft" });
-      const { visible, revealed, nextShown } = visibleFamilies(chatFamilies, GROUP_VISIBLE_LIMIT, shownMoreFor(input.moreShown, CHATS_MORE_KEY), input);
-      for (const family of visible) rows.push(sessionRow(family, "chat", resolver.get(familyProjectKey(family)), input));
-      const more = moreRowState(chatFamilies.length, visible.length, revealed);
-      if (more) rows.push({ kind: "chats-more", key: "chats-more", ...more, nextShown });
+      const projectOf = (family: SessionFamily) => resolver.get(familyProjectKey(family));
+      if (recent) {
+        pushRecentRows(rows, chatFamilies, input, recent, projectOf, "chats");
+      } else {
+        const { visible, revealed, nextShown } = visibleFamilies(chatFamilies, GROUP_VISIBLE_LIMIT, shownMoreFor(input.moreShown, CHATS_MORE_KEY), input);
+        for (const family of visible) rows.push(sessionRow(family, "chat", projectOf(family), input));
+        const more = moreRowState(chatFamilies.length, visible.length, revealed);
+        if (more) rows.push({ kind: "chats-more", key: "chats-more", ...more, nextShown });
+      }
     }
     rows.push({ kind: "spacer", key: "chats-spacer" });
     rows.push({ kind: "projects-header", key: "projects-header", collapsed: !!input.projectsCollapsed });
@@ -615,8 +623,8 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     .filter((project) => !rank.has(project.key) && recordable(project))
     .map((project) => project.key);
 
-  if (input.listMode === "recent" && input.recent) {
-    if (!input.projectsCollapsed && pushRecentRows(rows, otherFamilies, input, input.recent, (family) => resolver.get(familyProjectKey(family)))) {
+  if (recent) {
+    if (!input.projectsCollapsed && pushRecentRows(rows, otherFamilies, input, recent, (family) => resolver.get(familyProjectKey(family)))) {
       rows.push({ kind: "spacer", key: "footer-spacer" });
     }
     if (!input.chats) rows.push({ kind: "footer-open", key: "footer-open" });
@@ -678,7 +686,11 @@ function pushRecentRows(
   input: SessionTreeInput,
   recent: RecentListInput,
   projectOf: (family: SessionFamily) => SidebarProject,
+  scope: RecentScope = "projects",
 ): boolean {
+  const isChat = scope === "chats";
+  const prefix = isChat ? "chats:" : "";
+  const folds = isChat ? recent.chatCollapsed : recent.collapsed;
   const sorted = families
     .map((family, index) => ({
       family,
@@ -702,12 +714,12 @@ function pushRecentRows(
   for (const section of RECENT_SECTIONS) {
     const sectionFamilies = bySection.get(section);
     if (!sectionFamilies) continue;
-    if (shown) rows.push({ kind: "spacer", key: `recent-spacer:${section}` });
+    if (shown) rows.push({ kind: "spacer", key: `recent-spacer:${prefix}${section}` });
     shown = true;
-    const collapsed = recent.collapsed.has(section);
-    rows.push({ kind: "recent-header", key: `recent:${section}`, section, count: sectionFamilies.length, collapsed, ...activityCounts(sectionFamilies, input) });
+    const collapsed = folds?.has(section) ?? false;
+    rows.push({ kind: "recent-header", key: `recent:${prefix}${section}`, section, ...(isChat ? { scope } : {}), count: sectionFamilies.length, collapsed, ...activityCounts(sectionFamilies, input) });
     if (collapsed) continue;
-    for (const family of sectionFamilies) rows.push(sessionRow(family, "recent", projectOf(family), input));
+    for (const family of sectionFamilies) rows.push(sessionRow(family, isChat ? "chat" : "recent", projectOf(family), input));
   }
   return shown;
 }
@@ -1134,10 +1146,11 @@ export function locateSessionRow(
   if (isFamilyPinned(family, input.uiState, input.runningIds)) {
     return { rowKey: `session:pinned:${family.root.id}`, projectKey, unfoldPinned: input.pinnedCollapsed, unfoldGroup: false, unfoldRecent: null };
   }
-  if (input.chats && isTempChatCwd(family.root.cwd, input.chats.cwds)) {
-    return { rowKey: `session:chat:${family.root.id}`, projectKey, unfoldPinned: false, unfoldGroup: false, unfoldRecent: null, unfoldChats: input.chats.collapsed };
-  }
   const recent = input.listMode === "recent" ? input.recent : undefined;
+  if (input.chats && isTempChatCwd(family.root.cwd, input.chats.cwds)) {
+    const section = recent && recentSectionOf(family, input.runningIds, recent.today);
+    return { rowKey: `session:chat:${family.root.id}`, projectKey, unfoldPinned: false, unfoldGroup: false, unfoldRecent: section && recent.chatCollapsed?.has(section) ? section : null, unfoldChats: input.chats.collapsed };
+  }
   if (recent) {
     const section = recentSectionOf(family, input.runningIds, recent.today);
     return { rowKey: `session:recent:${family.root.id}`, projectKey, unfoldPinned: false, unfoldGroup: false, unfoldRecent: recent.collapsed.has(section) ? section : null };

@@ -1,5 +1,5 @@
 import { getBrowserStorage } from "./browser-storage";
-import { RECENT_SECTIONS, type RecentSection, type SidebarListMode } from "./session-tree";
+import { RECENT_SECTIONS, type RecentScope, type RecentSection, type SidebarListMode } from "./session-tree";
 
 /**
  * Per-browser sidebar preferences: the active tab (sessions or files), the
@@ -25,7 +25,10 @@ const LEGACY_GROUP_EXPANSION_STORAGE_KEY = "pi-web:sidebar-groups";
 const ARCHIVE_COLLAPSED_STORAGE_KEY = "pi-web:sidebar-archive-collapsed";
 const PINNED_COLLAPSED_STORAGE_KEY = "pi-web:sidebar-pins-collapsed";
 const LIST_MODE_STORAGE_KEY = "pi-web:sidebar-list-mode";
-const RECENT_COLLAPSED_STORAGE_KEY = "pi-web:sidebar-recent-collapsed";
+const RECENT_COLLAPSED_STORAGE_KEYS: Record<RecentScope, string> = {
+  projects: "pi-web:sidebar-recent-collapsed",
+  chats: "pi-web:sidebar-chat-recent-collapsed",
+};
 const SHOW_IGNORED_FILES_STORAGE_KEY = "pi-web:sidebar-files-show-ignored";
 const FILES_COLLAPSED_STORAGE_KEY = "pi-web:sidebar-files-collapsed";
 const CHANGES_VIEW_MODE_STORAGE_KEY = "pi-web:sidebar-changes-view-mode";
@@ -203,10 +206,10 @@ export function saveListMode(mode: SidebarListMode, storage: StorageLike | null 
 }
 
 /** The recent list's folded date sections; open unless saved here. Unknown names are dropped. */
-export function loadRecentCollapsed(storage: StorageLike | null = getBrowserStorage()): RecentSection[] {
+export function loadRecentCollapsed(storage: StorageLike | null = getBrowserStorage(), scope: RecentScope = "projects"): RecentSection[] {
   if (!storage) return [];
   try {
-    const raw = storage.getItem(RECENT_COLLAPSED_STORAGE_KEY);
+    const raw = storage.getItem(RECENT_COLLAPSED_STORAGE_KEYS[scope]);
     const value: unknown = raw === null ? [] : JSON.parse(raw);
     if (!Array.isArray(value)) return [];
     return RECENT_SECTIONS.filter((section) => value.includes(section));
@@ -215,10 +218,10 @@ export function loadRecentCollapsed(storage: StorageLike | null = getBrowserStor
   }
 }
 
-export function saveRecentCollapsed(sections: readonly RecentSection[], storage: StorageLike | null = getBrowserStorage()): void {
+export function saveRecentCollapsed(sections: readonly RecentSection[], storage: StorageLike | null = getBrowserStorage(), scope: RecentScope = "projects"): void {
   if (!storage) return;
   try {
-    storage.setItem(RECENT_COLLAPSED_STORAGE_KEY, JSON.stringify(RECENT_SECTIONS.filter((section) => sections.includes(section))));
+    storage.setItem(RECENT_COLLAPSED_STORAGE_KEYS[scope], JSON.stringify(RECENT_SECTIONS.filter((section) => sections.includes(section))));
   } catch {
     // Persistence is best-effort.
   }

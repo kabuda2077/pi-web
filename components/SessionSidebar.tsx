@@ -30,6 +30,7 @@ import {
   showMoreFamilies,
   startOfLocalDay,
   type RecentListInput,
+  type RecentScope,
   type RecentSection,
   type SidebarListMode,
   type SidebarProject,
@@ -688,10 +689,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   const [keptOpenGroups, setKeptOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
   const [moreShown, setMoreShown] = useState<Readonly<Record<string, number>>>({});
   const [pinnedCollapsed, setPinnedCollapsed] = useState(false);
-  // The list by project (groups) or by date across projects, and the date
-  // sections folded there; both per browser.
+  // The sidebar list mode and the date sections folded in Projects and General, per browser.
   const [listMode, setListMode] = useState<SidebarListMode>("projects");
   const [recentCollapsed, setRecentCollapsed] = useState<readonly RecentSection[]>([]);
+  const [chatRecentCollapsed, setChatRecentCollapsed] = useState<readonly RecentSection[]>([]);
   // True once the mount effect below has put the browser's folds back: set
   // in the same batch, so a render that has it has them too.
   const [sidebarPrefsRestored, setSidebarPrefsRestored] = useState(false);
@@ -914,6 +915,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     if (loadListMode() === "recent") setListMode("recent");
     const recentFolds = loadRecentCollapsed();
     if (recentFolds.length > 0) setRecentCollapsed(recentFolds);
+    const chatRecentFolds = loadRecentCollapsed(undefined, "chats");
+    if (chatRecentFolds.length > 0) setChatRecentCollapsed(chatRecentFolds);
     const archiveFolds = loadArchiveCollapsed();
     if (archiveFolds.length > 0) setArchiveCollapsed(archiveFolds);
     if (loadFilesCollapsed()) setFilesCollapsed(true);
@@ -1734,8 +1737,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
   // The recent list: the viewer's day and the folded date sections.
   const today = useLocalDayStart();
   const recentList = useMemo<RecentListInput>(
-    () => ({ today, collapsed: new Set(recentCollapsed) }),
-    [today, recentCollapsed],
+    () => ({ today, collapsed: new Set(recentCollapsed), chatCollapsed: new Set(chatRecentCollapsed) }),
+    [today, recentCollapsed, chatRecentCollapsed],
   );
   const model = useMemo(() => buildSessionTree({
     projectsCollapsed,
@@ -2281,9 +2284,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     }
     const unfoldRecent = location.unfoldRecent;
     if (unfoldRecent) {
-      const next = recentCollapsed.filter((section) => section !== unfoldRecent);
-      setRecentCollapsed(next);
-      saveRecentCollapsed(next);
+      const isChat = location.unfoldChats !== undefined;
+      const next = (isChat ? chatRecentCollapsed : recentCollapsed).filter((section) => section !== unfoldRecent);
+      (isChat ? setChatRecentCollapsed : setRecentCollapsed)(next);
+      saveRecentCollapsed(next, undefined, isChat ? "chats" : "projects");
     }
     if (location.unfoldGroup) {
       const next = { ...groupExpansion };
@@ -2300,7 +2304,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
       block: "nearest",
       ...(focus?.sessionId === sessionId ? { takeFocusFrom: focus.takeFocusFrom } : {}),
     });
-  }, [visibleSelectedId, allSessions, uiState, runningSessionIds, shownGroupExpansion, groupExpansion, pinnedCollapsed, listMode, recentList, recentCollapsed, chats, loading, uiStateLoaded, sidebarPrefsRestored, mainTreeShown, saveGroupChoices]);
+  }, [visibleSelectedId, allSessions, uiState, runningSessionIds, shownGroupExpansion, groupExpansion, pinnedCollapsed, listMode, recentList, recentCollapsed, chatRecentCollapsed, chats, loading, uiStateLoaded, sidebarPrefsRestored, mainTreeShown, saveGroupChoices]);
 
   // Fork (the row menu's F): the server copies the family's current branch
   // into a new session beside it (POST /api/sessions/[id]/fork) and leaves
@@ -2687,12 +2691,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onSelectSid
     saveListMode(next);
     openRevealRef.current = visibleSelectedId;
   };
-  const handleToggleRecentSection = (section: RecentSection) => {
-    const next = recentCollapsed.includes(section)
-      ? recentCollapsed.filter((item) => item !== section)
-      : [...recentCollapsed, section];
-    setRecentCollapsed(next);
-    saveRecentCollapsed(next);
+  const handleToggleRecentSection = (section: RecentSection, scope: RecentScope = "projects") => {
+    const folds = scope === "chats" ? chatRecentCollapsed : recentCollapsed;
+    const next = folds.includes(section) ? folds.filter((item) => item !== section) : [...folds, section];
+    (scope === "chats" ? setChatRecentCollapsed : setRecentCollapsed)(next);
+    saveRecentCollapsed(next, undefined, scope);
   };
 
   const handleTogglePinned = () => {

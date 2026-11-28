@@ -25,6 +25,7 @@ import {
   getVisibleRowIndices,
   revealScrollTop,
   revealStep,
+  type RecentScope,
   type RecentSection,
   type RevealMisses,
   type SidebarLayout,
@@ -126,7 +127,7 @@ export interface SessionTreeProps extends SectionRowHandlers {
   onShowLess(key: string): void;
   onTogglePinned(): void;
   /** A recent list's date section header. */
-  onToggleRecentSection?(section: RecentSection): void;
+  onToggleRecentSection?(section: RecentSection, scope?: RecentScope): void;
   onArchiveFamily(family: SessionFamily): void;
   onRestoreFamily(family: SessionFamily): void;
   onOpenRowMenu(row: SessionRow, anchor: SidebarMenuAnchor, opener: HTMLElement | null): void;
@@ -1057,7 +1058,7 @@ const PlainRowView = memo(function PlainRowView({
             aria-expanded={!row.collapsed}
             onClick={() => {
               if (row.kind === "pinned-header") handlers.current.onTogglePinned();
-              else handlers.current.onToggleRecentSection?.(row.section);
+              else handlers.current.onToggleRecentSection?.(row.section, row.scope);
             }}
           >
             <ChevronIcon size={12} strokeWidth={3} className={`session-tree-chevron${row.collapsed ? "" : " is-open"}`} />
@@ -1150,7 +1151,7 @@ const PlainRowView = memo(function PlainRowView({
       );
     case "footer-archived":
       return (
-        <SidebarArchiveEntry rowKey={row.key} count={row.count} style={style} onOpen={() => handlers.current.onOpenArchive()}>
+        <SidebarArchiveEntry rowKey={row.key} style={style} onOpen={() => handlers.current.onOpenArchive()}>
           <div className="session-tree-row session-tree-footer" style={style} data-row-key={row.key}>
             <button type="button" className="session-tree-footer-button" onClick={() => handlers.current.onOpenArchive()}>
               <ArchiveIcon size={12} />

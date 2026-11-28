@@ -3,9 +3,8 @@ import { useDesktopSidebar } from "@/hooks/useDesktopSidebar";
 import { useI18n } from "@/hooks/useI18n";
 import { ArchiveIcon } from "./SidebarIcons";
 
-export function SidebarArchiveEntry({ rowKey, count, style, onOpen, children }: {
+export function SidebarArchiveEntry({ rowKey, style, onOpen, children }: {
   rowKey: string;
-  count: number;
   style: CSSProperties;
   onOpen: () => void;
   children: ReactNode;
@@ -19,7 +18,6 @@ export function SidebarArchiveEntry({ rowKey, count, style, onOpen, children }: 
       <button type="button" className="session-tree-footer-button" onClick={onOpen}>
         <ArchiveIcon size={14} />
         <span className="session-tree-footer-label">{t("sidebar.archive")}</span>
-        <span className="sidebar-archive-entry-count">{count}</span>
       </button>
     </div>
   );
